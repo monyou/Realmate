@@ -36,7 +36,7 @@ const makeId = (item: SourceMediaItem, index: number) =>
 		.replace(/(^-|-$)/g, '');
 
 export class PartyEngine {
-	private readonly items: MediaItem[];
+	private items: MediaItem[];
 	private readonly random: () => number;
 	private readonly players = new Map<string, PlayerRecord>();
 	private participantIds: string[] = [];
@@ -51,7 +51,26 @@ export class PartyEngine {
 
 	constructor(sourceItems: SourceMediaItem[], random: () => number = Math.random) {
 		this.random = random;
-		this.items = sourceItems
+		this.items = this.normalizeMedia(sourceItems);
+	}
+
+	replaceMedia(sourceItems: SourceMediaItem[]) {
+		if (this.phase !== 'lobby') return this.snapshot();
+		this.items = this.normalizeMedia(sourceItems);
+		this.message = null;
+		this.touch();
+		return this.snapshot();
+	}
+
+	setLobbyMessage(message: string) {
+		if (this.phase !== 'lobby') return this.snapshot();
+		this.message = message;
+		this.touch();
+		return this.snapshot();
+	}
+
+	private normalizeMedia(sourceItems: SourceMediaItem[]) {
+		const items = sourceItems
 			.filter(
 				(item) =>
 					item &&
@@ -72,9 +91,11 @@ export class PartyEngine {
 				id: makeId(item, index)
 			}));
 
-		if (this.items.length === 0) {
-			throw new Error('media.json must contain at least one valid movie or series');
+		if (items.length === 0) {
+			throw new Error('Vercel Blob media.json must contain at least one valid movie or series');
 		}
+
+		return items;
 	}
 
 	connect(playerId: string, requestedName: string) {

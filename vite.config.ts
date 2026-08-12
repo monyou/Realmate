@@ -4,9 +4,11 @@ import adapter from '@sveltejs/adapter-auto';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { partyPlugin } from './src/lib/server/party-plugin.ts';
 
+const mediaBlobUrl = 'https://epureihf1azmctan.public.blob.vercel-storage.com/media.json';
+
 export default defineConfig({
 	plugins: [
-		partyPlugin(),
+		partyPlugin(mediaBlobUrl),
 		tailwindcss(),
 		sveltekit({
 			compilerOptions: {

@@ -54,6 +54,28 @@ describe('PartyEngine', () => {
 		expect(room.snapshot().message).toContain('two');
 	});
 
+	it('refreshes media in the lobby without changing an active round', () => {
+		const room = new PartyEngine(items, () => 0.99);
+		room.connect('a', 'A');
+		room.connect('b', 'B');
+		room.replaceMedia([
+			{
+				title: 'Blob title',
+				type: 'movie',
+				genres: ['Drama'],
+				img: '/blob.jpg',
+				year: 2026,
+				imdbRating: 8.5
+			}
+		]);
+
+		const round = room.start({ playerId: 'a' });
+		expect(round.deck.map((item) => item.title)).toEqual(['Blob title']);
+
+		room.replaceMedia(items);
+		expect(room.snapshot().deck.map((item) => item.title)).toEqual(['Blob title']);
+	});
+
 	it('stops immediately when everyone likes the same title', () => {
 		const room = joinTwoAndStart();
 		const [first] = room.snapshot().deck;

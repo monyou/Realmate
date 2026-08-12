@@ -25,7 +25,13 @@ Send the generated HTTPS URL to the other people. WebSocket traffic uses that sa
 
 ## Add your movies and series
 
-Replace the sample entries in [`src/lib/data/media.json`](src/lib/data/media.json). Each item must have exactly the data shape below; an internal stable ID is generated automatically.
+Replace `media.json` in the public `realmate-blob-store`. The app reads it from:
+
+```text
+https://epureihf1azmctan.public.blob.vercel-storage.com/media.json
+```
+
+The file must contain a JSON array. Each item must have exactly the data shape below; an internal stable ID is generated automatically.
 
 ```json
 {
@@ -43,7 +49,7 @@ Replace the sample entries in [`src/lib/data/media.json`](src/lib/data/media.jso
 - `img` can be any browser-accessible image URL.
 - `imdbRating` must be a number between `0` and `10` and is displayed with one decimal place.
 - The server shuffles the list once per round, and all participants receive the same order.
-- Updating the JSON while the dev server is running restarts the live room and clears the current round.
+- The media list is refreshed from Blob when someone starts a round. An active round keeps its existing deck, and a later round receives the updated file after Vercel's cache propagation, which may take up to 60 seconds.
 
 ## How the room behaves
 

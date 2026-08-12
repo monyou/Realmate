@@ -1,13 +1,31 @@
 import type { Plugin, ViteDevServer, WebSocket, WebSocketClient } from 'vite';
-import media from '../data/media.json' with { type: 'json' };
 import type { HelloPayload, PlayAgainPayload, PlayerActionPayload, VotePayload } from '../types.ts';
 import { PartyEngine } from './party-engine.ts';
 
-export const partyPlugin = (): Plugin => {
-	const engine = new PartyEngine(media as never);
+type SourceMedia = ConstructorParameters<typeof PartyEngine>[0];
+
+const loadMedia = async (blobUrl: string): Promise<SourceMedia> => {
+	const response = await fetch(blobUrl, {
+		cache: 'no-store',
+		headers: { accept: 'application/json' }
+	});
+	if (!response.ok) {
+		throw new Error(
+			`Unable to load media from Vercel Blob (${response.status} ${response.statusText})`
+		);
+	}
+
+	const media: unknown = await response.json();
+	if (!Array.isArray(media)) throw new Error('Vercel Blob media.json must contain a JSON array');
+	return media as SourceMedia;
+};
+
+export const partyPlugin = (mediaBlobUrl: string): Plugin => {
+	let engine: PartyEngine;
 	const identities = new Map<WebSocket, string>();
 	const socketsByPlayer = new Map<string, Set<WebSocket>>();
 	const removalTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	let startRound: Promise<void> | undefined;
 	let server: ViteDevServer;
 
 	const broadcast = () => server.ws.send('reel:state', engine.snapshot());
@@ -46,8 +64,9 @@ export const partyPlugin = (): Plugin => {
 
 	return {
 		name: 'reelmate-live-room',
-		apply: 'serve',
-		configureServer(viteServer) {
+		apply: (_config, environment) => environment.command === 'serve' && environment.mode !== 'test',
+		async configureServer(viteServer) {
+			engine = new PartyEngine(await loadMedia(mediaBlobUrl));
 			server = viteServer;
 			server.ws.on('connection', (socket) => socket.once('close', () => forget(socket)));
 
@@ -58,10 +77,26 @@ export const partyPlugin = (): Plugin => {
 				broadcast();
 			});
 
-			server.ws.on('reel:start', (payload: PlayerActionPayload, client) => {
+			server.ws.on('reel:start', async (payload: PlayerActionPayload, client) => {
 				if (identities.get(client.socket) !== payload?.playerId) return;
-				engine.start(payload);
-				broadcast();
+				if (engine.snapshot().phase !== 'lobby' || startRound) return;
+
+				startRound = (async () => {
+					try {
+						engine.replaceMedia(await loadMedia(mediaBlobUrl));
+						engine.start(payload);
+					} catch (error) {
+						console.error('Failed to refresh media from Vercel Blob', error);
+						engine.setLobbyMessage('Could not refresh the media list. Please try starting again.');
+					}
+					broadcast();
+				})();
+
+				try {
+					await startRound;
+				} finally {
+					startRound = undefined;
+				}
 			});
 
 			server.ws.on('reel:vote', (payload: VotePayload, client) => {
