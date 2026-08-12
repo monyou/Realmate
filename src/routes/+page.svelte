@@ -27,6 +27,18 @@
 	let previousCardKey = '';
 	let voteSendTimer: ReturnType<typeof setTimeout> | undefined;
 	let voteFallback: ReturnType<typeof setTimeout> | undefined;
+	let pollTimer: ReturnType<typeof setInterval> | undefined;
+	let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+	let pollInFlight = false;
+
+	type PartyAction =
+		| { type: 'hello'; name: string }
+		| { type: 'start' }
+		| { type: 'vote'; roundId: string; itemId: string; liked: boolean }
+		| { type: 'again'; roundId: string }
+		| { type: 'leave' };
+
+	type PartyResponse = { playerId: string; state: PartyState };
 
 	const me = $derived(party?.players.find((player) => player.id === playerId));
 	const currentItem = $derived(
@@ -60,28 +72,70 @@
 	});
 
 	onMount(() => {
-		playerId = localStorage.getItem('reelmate-player-id') ?? crypto.randomUUID();
-		localStorage.setItem('reelmate-player-id', playerId);
-
-		playerName = localStorage.getItem('reelmate-player-name') ?? makeGuestName(playerId);
+		const guestSeed = localStorage.getItem('reelmate-guest-seed') ?? crypto.randomUUID();
+		localStorage.setItem('reelmate-guest-seed', guestSeed);
+		playerName = localStorage.getItem('reelmate-player-name') ?? makeGuestName(guestSeed);
 		localStorage.setItem('reelmate-player-name', playerName);
+		let stopped = false;
 
-		const hot = import.meta.hot;
-		if (!hot) return;
-
-		const receiveState = (nextState: PartyState) => {
-			party = nextState;
-			connected = true;
-		};
-		hot.on('reel:state', receiveState);
-		hot.send('reel:hello', { playerId, name: playerName });
+		void (async () => {
+			await requestParty({ type: 'hello', name: playerName });
+			if (stopped) return;
+			pollTimer = setInterval(() => void refreshParty(), 900);
+			heartbeatTimer = setInterval(
+				() => void requestParty({ type: 'hello', name: playerName }),
+				3_000
+			);
+		})();
 
 		return () => {
-			hot.off('reel:state', receiveState);
+			stopped = true;
+			if (pollTimer) clearInterval(pollTimer);
+			if (heartbeatTimer) clearInterval(heartbeatTimer);
 			if (voteSendTimer) clearTimeout(voteSendTimer);
 			if (voteFallback) clearTimeout(voteFallback);
+			navigator.sendBeacon(
+				'/api/party',
+				new Blob([JSON.stringify({ type: 'leave' })], { type: 'application/json' })
+			);
 		};
 	});
+
+	function applyResponse(response: PartyResponse) {
+		playerId = response.playerId;
+		if (!party || response.state.revision >= party.revision) party = response.state;
+		connected = true;
+	}
+
+	async function requestParty(action: PartyAction) {
+		try {
+			const response = await fetch('/api/party', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify(action)
+			});
+			if (!response.ok) throw new Error(`Party request failed (${response.status})`);
+			applyResponse((await response.json()) as PartyResponse);
+		} catch (error) {
+			console.error(error);
+			connected = false;
+		}
+	}
+
+	async function refreshParty() {
+		if (pollInFlight) return;
+		pollInFlight = true;
+		try {
+			const response = await fetch('/api/party', { cache: 'no-store' });
+			if (!response.ok) throw new Error(`Party refresh failed (${response.status})`);
+			applyResponse((await response.json()) as PartyResponse);
+		} catch (error) {
+			console.error(error);
+			connected = false;
+		} finally {
+			pollInFlight = false;
+		}
+	}
 
 	function makeGuestName(id: string) {
 		let total = 0;
@@ -90,7 +144,7 @@
 	}
 
 	function sendStart() {
-		if (readyToStart) import.meta.hot?.send('reel:start', { playerId });
+		if (readyToStart) void requestParty({ type: 'start' });
 	}
 
 	function sendAgain() {
@@ -99,7 +153,7 @@
 		if (voteFallback) clearTimeout(voteFallback);
 		dragX = 0;
 		leaving = false;
-		import.meta.hot?.send('reel:again', { playerId, roundId: party.roundId });
+		void requestParty({ type: 'again', roundId: party.roundId });
 	}
 
 	function decide(liked: boolean) {
@@ -110,7 +164,7 @@
 		const itemId = currentItem.id;
 		const roundId = party.roundId;
 		voteSendTimer = setTimeout(
-			() => import.meta.hot?.send('reel:vote', { playerId, roundId, itemId, liked }),
+			() => void requestParty({ type: 'vote', roundId, itemId, liked }),
 			190
 		);
 		voteFallback = setTimeout(() => {
@@ -315,7 +369,7 @@
 					{/if}
 
 					<button
-						class="relative mt-4.5 flex w-full cursor-pointer items-center justify-between rounded-[17px] border-0 enabled:bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-4.25 font-extrabold tracking-[-0.02em] text-[#120a0f] shadow-[0_14px_34px_rgba(255,63,102,0.24),inset_0_1px_rgba(255,255,255,0.35)] transition-[transform,box-shadow,opacity] duration-150 ease-in-out hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-[0_18px_42px_rgba(255,63,102,0.32)] active:not-disabled:translate-y-px active:not-disabled:scale-[0.99] disabled:cursor-not-allowed disabled:bg-white/7.5 disabled:text-[#89838f] disabled:shadow-none [&_b]:text-[23px] [&_b]:leading-none"
+						class="relative mt-4.5 flex w-full cursor-pointer items-center justify-between rounded-[17px] border-0 px-5 py-4.25 font-extrabold tracking-[-0.02em] text-[#120a0f] shadow-[0_14px_34px_rgba(255,63,102,0.24),inset_0_1px_rgba(255,255,255,0.35)] transition-[transform,box-shadow,opacity] duration-150 ease-in-out hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-[0_18px_42px_rgba(255,63,102,0.32)] active:not-disabled:translate-y-px active:not-disabled:scale-[0.99] enabled:bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] disabled:cursor-not-allowed disabled:bg-white/7.5 disabled:text-[#89838f] disabled:shadow-none [&_b]:text-[23px] [&_b]:leading-none"
 						disabled={!readyToStart}
 						onclick={sendStart}
 					>

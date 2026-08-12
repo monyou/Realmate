@@ -1,17 +1,18 @@
 # Reelmate
 
-A local-first group swiping app for choosing a movie or series together. Everyone on the same URL joins one live room. A round ends immediately when every participant likes the same title, or after every participant finishes the deck without a match.
+A group swiping app for choosing a movie or series together. Everyone on the same URL joins one live room. A round ends immediately when every participant likes the same title, or after every participant finishes the deck without a match.
 
-Built with SvelteKit, Svelte 5, TypeScript, Tailwind CSS 4, Vite's development WebSocket channel, and Bun.
+Built with SvelteKit, Svelte 5, TypeScript, Tailwind CSS 4, Upstash Redis, Vercel Blob, and Bun.
 
 ## Run it
 
 ```bash
 bun install
+cp .env.example .env
 bun run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173). The dev server listens on the local network, so phones on the same Wi-Fi can also use the network URL printed by Vite.
+Fill `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` in `.env`, then open [http://localhost:5173](http://localhost:5173). The dev server listens on the local network, so phones on the same Wi-Fi can also use the network URL printed by Vite.
 
 To share it through ngrok:
 
@@ -19,9 +20,18 @@ To share it through ngrok:
 ngrok http 5173
 ```
 
-Send the generated HTTPS URL to the other people. WebSocket traffic uses that same URL automatically.
+Send the generated HTTPS URL to the other people. Redis credentials are mandatory in every environment; there is no separate in-memory implementation.
 
-> This project intentionally keeps the room in the running dev server's memory. Restarting `bun run dev` resets the lobby and votes. Keep an ngrok URL private: it exposes a development server and is not intended as a public deployment.
+## Deploy to Vercel
+
+1. Import this repository into Vercel. The repository includes the official SvelteKit Vercel adapter and pins Node.js 22.
+2. In the Vercel project, open **Storage**, add an **Upstash Redis** database from the Marketplace, and connect it to this project.
+3. Confirm that the integration added `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` for the environments you will deploy.
+4. Deploy, or redeploy after connecting Redis so the new environment variables are included.
+
+No Vercel Blob token is required because `media.json` is public. The app refuses to run its party API without Redis credentials.
+
+`REALMATE_ROOM_KEY` is optional. Set it when multiple apps share one Redis database and should not share the same party state. Otherwise production and preview deployments use separate default keys based on `VERCEL_ENV`.
 
 ## Add your movies and series
 
