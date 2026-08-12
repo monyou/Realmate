@@ -267,42 +267,44 @@
 						</div>
 					{/if}
 					{#if currentItem}
-						<article
-							class="media-card card-current"
-							class:is-dragging={dragging}
-							style={cardTransform}
-							onpointerdown={pointerDown}
-							onpointermove={pointerMove}
-							onpointerup={pointerUp}
-							onpointercancel={pointerUp}
-						>
-							<img src={currentItem.img} alt={`${currentItem.title} poster`} draggable="false" />
-							<div class="poster-vignette"></div>
-							<div class="vote-stamp stamp-no" style={`opacity:${noStrength}`}>PASS</div>
-							<div class="vote-stamp stamp-yes" style={`opacity:${yesStrength}`}>YES!</div>
-							<div class="card-copy">
-								<div class="media-meta-row">
-									<div class="media-data">
-										<span class={`kind kind-${currentItem.type}`}>{mediaLabel(currentItem)}</span>
-										<span>{currentItem.year}</span>
+						{#key currentItem.id}
+							<article
+								class="media-card card-current"
+								class:is-dragging={dragging}
+								style={cardTransform}
+								onpointerdown={pointerDown}
+								onpointermove={pointerMove}
+								onpointerup={pointerUp}
+								onpointercancel={pointerUp}
+							>
+								<img src={currentItem.img} alt={`${currentItem.title} poster`} draggable="false" />
+								<div class="poster-vignette"></div>
+								<div class="vote-stamp stamp-no" style={`opacity:${noStrength}`}>PASS</div>
+								<div class="vote-stamp stamp-yes" style={`opacity:${yesStrength}`}>YES!</div>
+								<div class="card-copy">
+									<div class="media-meta-row">
+										<div class="media-data">
+											<span class={`kind kind-${currentItem.type}`}>{mediaLabel(currentItem)}</span>
+											<span>{currentItem.year}</span>
+										</div>
+										<div
+											class="imdb-rating"
+											aria-label={`IMDb rating ${ratingLabel(currentItem)} out of 10`}
+										>
+											<span aria-hidden="true">★</span>
+											<b>{ratingLabel(currentItem)}</b>
+											<small>IMDb</small>
+										</div>
 									</div>
-									<div
-										class="imdb-rating"
-										aria-label={`IMDb rating ${ratingLabel(currentItem)} out of 10`}
-									>
-										<span aria-hidden="true">★</span>
-										<b>{ratingLabel(currentItem)}</b>
-										<small>IMDb</small>
+									<h2>{currentItem.title}</h2>
+									<div class="genre-list" aria-label={`Genres: ${currentItem.genres.join(', ')}`}>
+										{#each currentItem.genres.slice(0, 3) as genre (genre)}
+											<span>{genre}</span>
+										{/each}
 									</div>
 								</div>
-								<h2>{currentItem.title}</h2>
-								<div class="genre-list" aria-label={`Genres: ${currentItem.genres.join(', ')}`}>
-									{#each currentItem.genres.slice(0, 3) as genre (genre)}
-										<span>{genre}</span>
-									{/each}
-								</div>
-							</div>
-						</article>
+							</article>
+						{/key}
 					{/if}
 				</div>
 
