@@ -54,6 +54,50 @@ describe('PartyEngine', () => {
 		expect(room.snapshot().message).toContain('two');
 	});
 
+	it('refreshes media in the lobby without changing an active round', () => {
+		const room = new PartyEngine(items, () => 0.99);
+		room.connect('a', 'A');
+		room.connect('b', 'B');
+		room.replaceMedia([
+			{
+				title: 'Blob title',
+				type: 'movie',
+				genres: ['Drama'],
+				img: '/blob.jpg',
+				year: 2026,
+				imdbRating: 8.5
+			}
+		]);
+
+		const round = room.start({ playerId: 'a' });
+		expect(round.deck.map((item) => item.title)).toEqual(['Blob title']);
+
+		room.replaceMedia(items);
+		expect(room.snapshot().deck.map((item) => item.title)).toEqual(['Blob title']);
+	});
+
+	it('restores an active round from durable state', () => {
+		const room = joinTwoAndStart();
+		const [first] = room.snapshot().deck;
+		vote(room, 'a', first.id, true);
+
+		const restored = PartyEngine.restore(room.persist());
+		expect(restored.snapshot()).toEqual(room.snapshot());
+		vote(restored, 'b', first.id, true);
+		expect(restored.snapshot().phase).toBe('matched');
+	});
+
+	it('removes players whose heartbeat has expired', () => {
+		const room = new PartyEngine(items);
+		room.connect('a', 'A', 1_000);
+		room.connect('b', 'B', 1_000);
+		room.start({ playerId: 'a' });
+
+		const state = room.pruneInactive(9_001, 8_000);
+		expect(state).toMatchObject({ phase: 'lobby', onlineCount: 0 });
+		expect(state.players).toEqual([]);
+	});
+
 	it('stops immediately when everyone likes the same title', () => {
 		const room = joinTwoAndStart();
 		const [first] = room.snapshot().deck;

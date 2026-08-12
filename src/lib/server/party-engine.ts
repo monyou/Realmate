@@ -12,9 +12,25 @@ type PlayerRecord = {
 	name: string;
 	avatar: number;
 	connected: boolean;
+	lastSeenAt: number;
 };
 
 type SourceMediaItem = Omit<MediaItem, 'id'> & { id?: string };
+
+export type PersistedPartyEngine = {
+	version: 1;
+	items: MediaItem[];
+	players: PlayerRecord[];
+	participantIds: string[];
+	positions: [string, number][];
+	votes: [string, [string, boolean][]][];
+	revision: number;
+	roundId: string | null;
+	phase: PartyState['phase'];
+	deck: MediaItem[];
+	match: MediaItem | null;
+	message: string | null;
+};
 
 const safeName = (name: string) =>
 	name
@@ -36,7 +52,7 @@ const makeId = (item: SourceMediaItem, index: number) =>
 		.replace(/(^-|-$)/g, '');
 
 export class PartyEngine {
-	private readonly items: MediaItem[];
+	private items: MediaItem[];
 	private readonly random: () => number;
 	private readonly players = new Map<string, PlayerRecord>();
 	private participantIds: string[] = [];
@@ -51,7 +67,67 @@ export class PartyEngine {
 
 	constructor(sourceItems: SourceMediaItem[], random: () => number = Math.random) {
 		this.random = random;
-		this.items = sourceItems
+		this.items = this.normalizeMedia(sourceItems);
+	}
+
+	static restore(state: PersistedPartyEngine, random: () => number = Math.random) {
+		if (state?.version !== 1 || !Array.isArray(state.items)) {
+			throw new Error('Unsupported persisted party state');
+		}
+
+		const engine = new PartyEngine(state.items, random);
+		for (const player of state.players) engine.players.set(player.id, player);
+		engine.participantIds = state.participantIds;
+		engine.positions = new Map(state.positions);
+		engine.votes = new Map(
+			state.votes.map(([itemId, playerVotes]) => [itemId, new Map(playerVotes)])
+		);
+		engine.revision = state.revision;
+		engine.roundId = state.roundId;
+		engine.phase = state.phase;
+		engine.deck = state.deck;
+		engine.match = state.match;
+		engine.message = state.message;
+		return engine;
+	}
+
+	persist(): PersistedPartyEngine {
+		return {
+			version: 1,
+			items: this.items,
+			players: [...this.players.values()],
+			participantIds: this.participantIds,
+			positions: [...this.positions.entries()],
+			votes: [...this.votes.entries()].map(([itemId, playerVotes]) => [
+				itemId,
+				[...playerVotes.entries()]
+			]),
+			revision: this.revision,
+			roundId: this.roundId,
+			phase: this.phase,
+			deck: this.deck,
+			match: this.match,
+			message: this.message
+		};
+	}
+
+	replaceMedia(sourceItems: SourceMediaItem[]) {
+		if (this.phase !== 'lobby') return this.snapshot();
+		this.items = this.normalizeMedia(sourceItems);
+		this.message = null;
+		this.touch();
+		return this.snapshot();
+	}
+
+	setLobbyMessage(message: string) {
+		if (this.phase !== 'lobby') return this.snapshot();
+		this.message = message;
+		this.touch();
+		return this.snapshot();
+	}
+
+	private normalizeMedia(sourceItems: SourceMediaItem[]) {
+		const items = sourceItems
 			.filter(
 				(item) =>
 					item &&
@@ -72,30 +148,43 @@ export class PartyEngine {
 				id: makeId(item, index)
 			}));
 
-		if (this.items.length === 0) {
-			throw new Error('media.json must contain at least one valid movie or series');
+		if (items.length === 0) {
+			throw new Error('Vercel Blob media.json must contain at least one valid movie or series');
 		}
+
+		return items;
 	}
 
-	connect(playerId: string, requestedName: string) {
+	connect(playerId: string, requestedName: string, now = Date.now()) {
 		if (!playerId) return this.snapshot();
 		const existing = this.players.get(playerId);
-		const name = safeName(requestedName) || `Guest ${this.players.size + 1}`;
+		const name = safeName(requestedName) || existing?.name || `Guest ${this.players.size + 1}`;
 		this.players.set(playerId, {
 			id: playerId,
 			name,
 			avatar: existing?.avatar ?? avatarFromId(playerId),
-			connected: true
+			connected: true,
+			lastSeenAt: now
 		});
+		if (!existing || !existing.connected || existing.name !== name) this.touch();
+		return this.snapshot();
+	}
+
+	markDisconnected(playerId: string, now = Date.now()) {
+		const player = this.players.get(playerId);
+		if (!player || !player.connected) return this.snapshot();
+		player.connected = false;
+		player.lastSeenAt = now;
 		this.touch();
 		return this.snapshot();
 	}
 
-	markDisconnected(playerId: string) {
-		const player = this.players.get(playerId);
-		if (!player) return this.snapshot();
-		player.connected = false;
-		this.touch();
+	pruneInactive(now = Date.now(), timeoutMs = 8_000) {
+		for (const player of [...this.players.values()]) {
+			if (now - player.lastSeenAt < timeoutMs) continue;
+			if (player.connected) player.connected = false;
+			this.removeDisconnected(player.id);
+		}
 		return this.snapshot();
 	}
 
@@ -180,12 +269,22 @@ export class PartyEngine {
 			this.phase === 'lobby'
 				? [...this.players.values()]
 						.filter((player) => player.connected)
-						.map((player) => ({ ...player, progress: 0, total: this.items.length }))
+						.map((player) => ({
+							id: player.id,
+							name: player.name,
+							avatar: player.avatar,
+							connected: player.connected,
+							progress: 0,
+							total: this.items.length
+						}))
 				: this.participantIds
 						.map((id) => this.players.get(id))
 						.filter((player): player is PlayerRecord => Boolean(player))
 						.map((player) => ({
-							...player,
+							id: player.id,
+							name: player.name,
+							avatar: player.avatar,
+							connected: player.connected,
 							progress: this.positions.get(player.id) ?? 0,
 							total: this.deck.length
 						}));
