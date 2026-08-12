@@ -1,0 +1,129 @@
+import { describe, expect, it } from 'vitest';
+import type { MediaItem } from '../types';
+import { PartyEngine } from './party-engine';
+
+const items: Omit<MediaItem, 'id'>[] = [
+	{
+		title: 'First',
+		type: 'movie',
+		genres: ['Drama', 'Mystery'],
+		img: '/first.jpg',
+		year: 2025,
+		imdbRating: 7.4
+	},
+	{
+		title: 'Second',
+		type: 'series',
+		genres: ['Sci-Fi'],
+		img: '/second.jpg',
+		year: 2024,
+		imdbRating: 8.2
+	}
+];
+
+const joinTwoAndStart = () => {
+	const room = new PartyEngine(items, () => 0.99);
+	room.connect('a', 'A');
+	room.connect('b', 'B');
+	room.start({ playerId: 'a' });
+	return room;
+};
+
+const vote = (
+	room: PartyEngine,
+	playerId: string,
+	itemId: string,
+	liked: boolean,
+	roundId = room.snapshot().roundId
+) => {
+	if (!roundId) throw new Error('Expected an active round');
+	return room.vote({ playerId, roundId, itemId, liked });
+};
+
+const playAgain = (room: PartyEngine, playerId: string) => {
+	const roundId = room.snapshot().roundId;
+	if (!roundId) throw new Error('Expected a completed round');
+	return room.playAgain({ playerId, roundId });
+};
+
+describe('PartyEngine', () => {
+	it('requires two connected people to start', () => {
+		const room = new PartyEngine(items);
+		room.connect('a', 'A');
+		expect(room.start({ playerId: 'a' }).phase).toBe('lobby');
+		expect(room.snapshot().message).toContain('two');
+	});
+
+	it('stops immediately when everyone likes the same title', () => {
+		const room = joinTwoAndStart();
+		const [first] = room.snapshot().deck;
+		vote(room, 'a', first.id, true);
+		expect(vote(room, 'b', first.id, true).phase).toBe('matched');
+		expect(room.snapshot().match?.id).toBe(first.id);
+	});
+
+	it('waits for everyone to finish before declaring no match', () => {
+		const room = joinTwoAndStart();
+		const [first, second] = room.snapshot().deck;
+		vote(room, 'a', first.id, true);
+		vote(room, 'a', second.id, false);
+		vote(room, 'b', first.id, false);
+		expect(room.snapshot().phase).toBe('playing');
+		vote(room, 'b', second.id, true);
+		expect(room.snapshot().phase).toBe('no-match');
+	});
+
+	it('ignores a vote for anything except that player current card', () => {
+		const room = joinTwoAndStart();
+		const [, second] = room.snapshot().deck;
+		vote(room, 'a', second.id, true);
+		expect(room.snapshot().players.find((player) => player.id === 'a')?.progress).toBe(0);
+	});
+
+	it('clears every choice after a no-match and rejects delayed votes from the old round', () => {
+		const room = joinTwoAndStart();
+		const firstRoundId = room.snapshot().roundId;
+		const [first, second] = room.snapshot().deck;
+
+		vote(room, 'a', first.id, true);
+		vote(room, 'a', second.id, false);
+		vote(room, 'b', first.id, false);
+		vote(room, 'b', second.id, true);
+		expect(room.snapshot().phase).toBe('no-match');
+
+		const reset = playAgain(room, 'a');
+		expect(reset).toMatchObject({ phase: 'lobby', roundId: null, deck: [], match: null });
+		expect(reset.players.every((player) => player.progress === 0)).toBe(true);
+
+		const nextRound = room.start({ playerId: 'b' });
+		expect(nextRound.roundId).not.toBe(firstRoundId);
+		expect(nextRound.players.every((player) => player.progress === 0)).toBe(true);
+
+		const [nextFirst] = nextRound.deck;
+		if (!firstRoundId) throw new Error('Expected the first round ID');
+		vote(room, 'a', nextFirst.id, true, firstRoundId);
+		vote(room, 'b', nextFirst.id, true, firstRoundId);
+		expect(room.snapshot().phase).toBe('playing');
+		expect(room.snapshot().players.every((player) => player.progress === 0)).toBe(true);
+	});
+
+	it('clears a successful match before another round starts', () => {
+		const room = joinTwoAndStart();
+		const firstRoundId = room.snapshot().roundId;
+		const [first] = room.snapshot().deck;
+		vote(room, 'a', first.id, true);
+		vote(room, 'b', first.id, true);
+		expect(room.snapshot().phase).toBe('matched');
+
+		playAgain(room, 'b');
+		const nextRound = room.start({ playerId: 'a' });
+		expect(nextRound).toMatchObject({ phase: 'playing', match: null });
+		expect(nextRound.roundId).not.toBe(firstRoundId);
+		expect(nextRound.players.every((player) => player.progress === 0)).toBe(true);
+
+		if (!firstRoundId) throw new Error('Expected the completed round ID');
+		const afterDelayedReplay = room.playAgain({ playerId: 'b', roundId: firstRoundId });
+		expect(afterDelayedReplay.phase).toBe('playing');
+		expect(afterDelayedReplay.roundId).toBe(nextRound.roundId);
+	});
+});
