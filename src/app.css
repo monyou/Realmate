@@ -1,0 +1,123 @@
+@import 'tailwindcss';
+
+:root {
+	font-family:
+		Inter,
+		ui-sans-serif,
+		-apple-system,
+		BlinkMacSystemFont,
+		'Segoe UI',
+		sans-serif;
+	font-synthesis: none;
+	color: #f8f5ff;
+	background: #0b0910;
+	color-scheme: dark;
+	--ink: #f8f5ff;
+	--muted: #aaa3b6;
+	--rose: #ff5c74;
+	--purple: #7c5cff;
+	--mint: #42e8c1;
+	--gold: #ffcf5c;
+}
+
+html {
+	min-width: 320px;
+	background: #0b0910;
+}
+
+body {
+	margin: 0;
+	min-width: 320px;
+	min-height: 100dvh;
+	overflow-x: hidden;
+	background:
+		radial-gradient(circle at 50% -20%, rgba(124, 92, 255, 0.16), transparent 36%), #0b0910;
+}
+
+button,
+input {
+	font: inherit;
+}
+
+button {
+	-webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible {
+	outline: 3px solid rgba(255, 207, 92, 0.85);
+	outline-offset: 4px;
+}
+
+@keyframes reel-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@keyframes orbit {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@keyframes heartbeat {
+	0%,
+	100% {
+		transform: scale(1);
+	}
+	45% {
+		transform: scale(1.16);
+	}
+}
+
+@keyframes match-arrive {
+	from {
+		transform: translateY(40px) rotate(-7deg) scale(0.78);
+		opacity: 0;
+	}
+	to {
+		transform: translateY(0) rotate(2deg) scale(1);
+		opacity: 1;
+	}
+}
+
+@keyframes fall {
+	0% {
+		transform: translate3d(0, -10vh, 0) rotate(var(--rotation));
+		opacity: 0;
+	}
+	8% {
+		opacity: 1;
+	}
+	100% {
+		transform: translate3d(40px, 115vh, 0) rotate(calc(var(--rotation) + 760deg));
+		opacity: 0.8;
+	}
+}
+
+@keyframes burst {
+	0%,
+	20% {
+		transform: scale(0.05);
+		opacity: 0;
+	}
+	42% {
+		opacity: 1;
+	}
+	72%,
+	100% {
+		transform: scale(1.15);
+		opacity: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		scroll-behavior: auto !important;
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+}
