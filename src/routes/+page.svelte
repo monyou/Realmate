@@ -17,9 +17,19 @@
 		"url(\"data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E\")";
 
 	let party = $state<PartyState | null>(null);
+	let roomId = $state('');
+	let shareUrl = $state('');
 	let playerId = $state('');
 	let playerName = $state('');
 	let connected = $state(false);
+	let pageReady = $state(false);
+	let sourceMode = $state<'url' | 'file'>('url');
+	let mediaUrl = $state('');
+	let mediaFile = $state<File | null>(null);
+	let creatingParty = $state(false);
+	let setupError = $state('');
+	let joinError = $state('');
+	let copied = $state(false);
 	let dragX = $state(0);
 	let dragging = $state(false);
 	let leaving = $state(false);
@@ -39,6 +49,7 @@
 		| { type: 'leave' };
 
 	type PartyResponse = { playerId: string; state: PartyState };
+	type CreatePartyResponse = PartyResponse & { roomId: string };
 
 	const me = $derived(party?.players.find((player) => player.id === playerId));
 	const currentItem = $derived(
@@ -77,16 +88,17 @@
 		playerName = localStorage.getItem('reelmate-player-name') ?? makeGuestName(guestSeed);
 		localStorage.setItem('reelmate-player-name', playerName);
 		let stopped = false;
+		roomId = new URL(window.location.href).searchParams.get('room') ?? '';
+		shareUrl = roomId ? makeShareUrl(roomId) : '';
+		pageReady = true;
 
-		void (async () => {
-			await requestParty({ type: 'hello', name: playerName });
-			if (stopped) return;
-			pollTimer = setInterval(() => void refreshParty(), 900);
-			heartbeatTimer = setInterval(
-				() => void requestParty({ type: 'hello', name: playerName }),
-				3_000
-			);
-		})();
+		if (roomId) {
+			void (async () => {
+				const joined = await requestParty({ type: 'hello', name: playerName });
+				if (stopped || !joined) return;
+				startPolling();
+			})();
+		}
 
 		return () => {
 			stopped = true;
@@ -94,12 +106,32 @@
 			if (heartbeatTimer) clearInterval(heartbeatTimer);
 			if (voteSendTimer) clearTimeout(voteSendTimer);
 			if (voteFallback) clearTimeout(voteFallback);
-			navigator.sendBeacon(
-				'/api/party',
-				new Blob([JSON.stringify({ type: 'leave' })], { type: 'application/json' })
-			);
+			if (roomId) {
+				navigator.sendBeacon(
+					partyEndpoint(),
+					new Blob([JSON.stringify({ type: 'leave' })], { type: 'application/json' })
+				);
+			}
 		};
 	});
+
+	function startPolling() {
+		if (pollTimer) clearInterval(pollTimer);
+		if (heartbeatTimer) clearInterval(heartbeatTimer);
+		pollTimer = setInterval(() => void refreshParty(), 900);
+		heartbeatTimer = setInterval(
+			() => void requestParty({ type: 'hello', name: playerName }),
+			3_000
+		);
+	}
+
+	function partyEndpoint() {
+		return `/api/party?room=${encodeURIComponent(roomId)}`;
+	}
+
+	function makeShareUrl(id: string) {
+		return `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(id)}`;
+	}
 
 	function applyResponse(response: PartyResponse) {
 		playerId = response.playerId;
@@ -109,16 +141,23 @@
 
 	async function requestParty(action: PartyAction) {
 		try {
-			const response = await fetch('/api/party', {
+			const response = await fetch(partyEndpoint(), {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify(action)
 			});
-			if (!response.ok) throw new Error(`Party request failed (${response.status})`);
+			if (!response.ok) {
+				const body = (await response.json().catch(() => null)) as { message?: string } | null;
+				throw new Error(body?.message ?? `Party request failed (${response.status})`);
+			}
 			applyResponse((await response.json()) as PartyResponse);
+			joinError = '';
+			return true;
 		} catch (error) {
 			console.error(error);
 			connected = false;
+			joinError = error instanceof Error ? error.message : 'The watch party is unavailable.';
+			return false;
 		}
 	}
 
@@ -126,15 +165,96 @@
 		if (pollInFlight) return;
 		pollInFlight = true;
 		try {
-			const response = await fetch('/api/party', { cache: 'no-store' });
-			if (!response.ok) throw new Error(`Party refresh failed (${response.status})`);
+			const response = await fetch(partyEndpoint(), { cache: 'no-store' });
+			if (!response.ok) {
+				const body = (await response.json().catch(() => null)) as { message?: string } | null;
+				throw new Error(body?.message ?? `Party refresh failed (${response.status})`);
+			}
 			applyResponse((await response.json()) as PartyResponse);
+			joinError = '';
 		} catch (error) {
 			console.error(error);
 			connected = false;
+			joinError = error instanceof Error ? error.message : 'The watch party is unavailable.';
 		} finally {
 			pollInFlight = false;
 		}
+	}
+
+	async function createParty() {
+		if (creatingParty || (sourceMode === 'url' ? !mediaUrl.trim() : !mediaFile)) return;
+		creatingParty = true;
+		setupError = '';
+		try {
+			let source: { mediaUrl: string } | { media: unknown };
+			if (sourceMode === 'file') {
+				if (!mediaFile) throw new Error('Choose a JSON file from your device.');
+				if (mediaFile.size > 2 * 1024 * 1024) {
+					throw new Error('The movie list is too large. The maximum size is 2 MB.');
+				}
+				let media: unknown;
+				try {
+					media = JSON.parse(await mediaFile.text());
+				} catch {
+					throw new Error('The selected file is not valid JSON.');
+				}
+				source = { media };
+			} else {
+				source = { mediaUrl: mediaUrl.trim() };
+			}
+
+			const response = await fetch('/api/party', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ type: 'create', name: playerName, ...source })
+			});
+			const body = (await response.json().catch(() => null)) as
+				CreatePartyResponse | { message?: string } | null;
+			if (!response.ok || !body || !('roomId' in body)) {
+				throw new Error(body && 'message' in body ? body.message : 'Could not create the party.');
+			}
+
+			roomId = body.roomId;
+			shareUrl = makeShareUrl(roomId);
+			history.replaceState({}, '', shareUrl);
+			applyResponse(body);
+			joinError = '';
+			startPolling();
+		} catch (error) {
+			setupError = error instanceof Error ? error.message : 'Could not create the party.';
+		} finally {
+			creatingParty = false;
+		}
+	}
+
+	function selectMediaFile(event: Event) {
+		mediaFile = (event.currentTarget as HTMLInputElement).files?.[0] ?? null;
+		setupError = '';
+	}
+
+	function switchSource(nextMode: 'url' | 'file') {
+		if (sourceMode === nextMode) return;
+		mediaFile = null;
+		setupError = '';
+		sourceMode = nextMode;
+	}
+
+	async function copyShareLink() {
+		if (!shareUrl) return;
+		try {
+			await navigator.clipboard.writeText(shareUrl);
+		} catch {
+			const input = document.querySelector<HTMLInputElement>('#share-url');
+			input?.select();
+			document.execCommand('copy');
+			window.getSelection()?.removeAllRanges();
+		}
+		copied = true;
+		setTimeout(() => (copied = false), 1_800);
+	}
+
+	function createAnotherParty() {
+		window.location.href = window.location.pathname;
 	}
 
 	function makeGuestName(id: string) {
@@ -266,15 +386,151 @@
 		>
 			<span
 				class="size-1.75 rounded-full bg-(--mint) shadow-[0_0_0_4px_rgba(66,232,193,0.12),0_0_12px_var(--mint)]"
-				class:bg-[var(--gold)]={!connected}
-				class:shadow-none={!connected}
+				class:bg-[var(--gold)]={roomId && !connected}
+				class:shadow-none={!connected || !roomId}
 			></span>
-			<span>{connected ? `${party?.onlineCount ?? 0} online` : 'connecting'}</span>
+			<span
+				>{roomId
+					? connected
+						? `${party?.onlineCount ?? 0} online`
+						: 'connecting'
+					: 'new party'}</span
+			>
 		</div>
 	</header>
 
 	<main class="grid w-full flex-1 place-items-center">
-		{#if !party}
+		{#if !pageReady}
+			<section
+				class="relative z-2 m-auto flex w-[min(100%,620px)] flex-col items-center gap-5 px-5.5 pt-7 pb-10.5 text-center text-(--muted) max-[380px]:px-4"
+			>
+				<div
+					class="relative size-15.5 animate-[reel-spin_1.8s_linear_infinite] rounded-full border-2 border-white/15 border-t-(--rose) before:absolute before:top-2.5 before:left-2.5 before:size-3 before:rounded-full before:bg-white/12 before:content-[''] after:absolute after:top-2.5 after:right-2.5 after:size-3 after:rounded-full after:bg-white/12 after:content-['']"
+				></div>
+				<p>Loading Reelmate…</p>
+			</section>
+		{:else if !roomId}
+			<section
+				class="relative z-2 m-auto w-[min(100%,620px)] px-5.5 pt-7 pb-10.5 text-center max-[380px]:px-4 min-[720px]:pt-10.5"
+			>
+				<div
+					class="mb-5 inline-flex items-center gap-2 text-[11px] font-extrabold tracking-[0.18em] text-[#d7d0e2] uppercase"
+				>
+					<span class="h-px w-6 bg-(--rose) shadow-[0_0_10px_var(--rose)]"></span> Build your deck
+				</div>
+				<h1
+					class="m-0 text-[clamp(42px,11vw,68px)] leading-[0.97] font-[850] tracking-[-0.065em] [&_em]:font-serif [&_em]:font-normal [&_em]:tracking-[-0.055em] [&_em]:text-(--rose)"
+				>
+					Bring the list.<br /><em>Invite your people.</em>
+				</h1>
+				<p class="mx-auto mt-5.5 max-w-127.5 text-[15px] leading-[1.65] text-(--muted)">
+					Paste a public link or choose a JSON file from your device. We’ll create a unique party
+					link for everyone to join.
+				</p>
+
+				<form
+					class="relative mx-auto mt-8.5 w-[min(100%,470px)] overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(30,26,40,0.92),rgba(16,14,22,0.96))] p-5.5 text-left shadow-[0_28px_80px_rgba(0,0,0,0.32),inset_0_1px_rgba(255,255,255,0.05)] backdrop-blur-[20px] max-[380px]:rounded-[23px] max-[380px]:p-4.5 min-[720px]:p-6.25"
+					onsubmit={(event) => {
+						event.preventDefault();
+						void createParty();
+					}}
+				>
+					<div
+						class="absolute -top-30 -right-22.5 size-60 rounded-full bg-[rgba(124,92,255,0.2)] blur-[48px]"
+					></div>
+					<div class="relative">
+						<div
+							class="mb-4 grid grid-cols-2 gap-1 rounded-[14px] border border-white/8 bg-black/20 p-1"
+							aria-label="Choose movie list source"
+						>
+							<button
+								type="button"
+								class={`cursor-pointer rounded-[10px] border-0 px-3 py-2.5 text-[11px] font-bold transition-colors ${sourceMode === 'url' ? 'bg-white/10 text-white' : 'bg-transparent text-(--muted)'}`}
+								onclick={() => switchSource('url')}>Paste a link</button
+							>
+							<button
+								type="button"
+								class={`cursor-pointer rounded-[10px] border-0 px-3 py-2.5 text-[11px] font-bold transition-colors ${sourceMode === 'file' ? 'bg-white/10 text-white' : 'bg-transparent text-(--muted)'}`}
+								onclick={() => switchSource('file')}>Upload a file</button
+							>
+						</div>
+
+						{#if sourceMode === 'url'}
+							<label
+								for="media-url"
+								class="mb-2.5 block text-[10px] font-bold tracking-[0.15em] text-(--muted) uppercase"
+								>Movie list URL</label
+							>
+							<input
+								id="media-url"
+								type="url"
+								bind:value={mediaUrl}
+								placeholder="https://example.com/movies.json"
+								required
+								autocomplete="url"
+								aria-describedby="media-help"
+								class="box-border w-full rounded-[15px] border border-white/12 bg-black/20 px-4 py-3.75 text-[13px] text-(--ink) transition-[border-color,box-shadow] outline-none placeholder:text-[#68616f] focus:border-[rgba(124,92,255,0.75)] focus:shadow-[0_0_0_3px_rgba(124,92,255,0.14)]"
+							/>
+						{:else}
+							<label
+								for="media-file"
+								class="flex min-h-25 cursor-pointer flex-col items-center justify-center gap-2 rounded-[15px] border border-dashed border-white/18 bg-black/15 px-4 py-4 text-center transition-[border-color,background] hover:border-[rgba(124,92,255,0.7)] hover:bg-[rgba(124,92,255,0.07)]"
+							>
+								<span class="text-2xl text-(--purple)" aria-hidden="true">↑</span>
+								<strong class="max-w-full overflow-hidden text-xs text-ellipsis whitespace-nowrap">
+									{mediaFile ? mediaFile.name : 'Choose a JSON file'}
+								</strong>
+								<small class="text-[9px] text-(--muted)">JSON only · up to 2 MB</small>
+							</label>
+							<input
+								id="media-file"
+								type="file"
+								accept=".json,application/json"
+								required
+								class="sr-only"
+								onchange={selectMediaFile}
+							/>
+						{/if}
+						<p id="media-help" class="mt-2.5 text-[10px] leading-relaxed text-[#817a89]">
+							The JSON must contain an array of valid movies or series.
+						</p>
+						{#if setupError}
+							<p class="mt-3 text-xs leading-relaxed text-(--gold)" role="alert">{setupError}</p>
+						{/if}
+						<button
+							type="submit"
+							class="relative mt-4.5 flex w-full cursor-pointer items-center justify-between rounded-[17px] border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-4.25 font-extrabold tracking-[-0.02em] text-[#120a0f] shadow-[0_14px_34px_rgba(255,63,102,0.24),inset_0_1px_rgba(255,255,255,0.35)] transition-[transform,box-shadow,opacity] duration-150 ease-in-out hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-[0_18px_42px_rgba(255,63,102,0.32)] active:not-disabled:translate-y-px active:not-disabled:scale-[0.99] disabled:cursor-wait disabled:opacity-60 [&_b]:text-[23px] [&_b]:leading-none"
+							disabled={creatingParty || (sourceMode === 'url' ? !mediaUrl.trim() : !mediaFile)}
+						>
+							<span>{creatingParty ? 'Checking your list…' : 'Create watch party'}</span>
+							<b aria-hidden="true">→</b>
+						</button>
+					</div>
+				</form>
+			</section>
+		{:else if joinError && !party}
+			<section
+				class="relative z-2 m-auto w-[min(100%,560px)] px-5.5 pt-7 pb-10.5 text-center max-[380px]:px-4"
+			>
+				<div
+					class="mx-auto mb-6 grid size-20 place-items-center rounded-[26px] border border-white/10 bg-white/4 text-3xl text-(--gold)"
+				>
+					!
+				</div>
+				<h1 class="m-0 text-[clamp(38px,10vw,58px)] leading-none font-[850] tracking-[-0.06em]">
+					Party unavailable
+				</h1>
+				<p class="mx-auto mt-5 max-w-105 text-[15px] leading-[1.65] text-(--muted)" role="alert">
+					{joinError}
+				</p>
+				<button
+					class="mt-7 cursor-pointer rounded-[15px] border border-white/12 bg-white/7 px-5 py-3.5 font-bold text-(--ink) transition-colors hover:bg-white/11"
+					onclick={createAnotherParty}
+				>
+					Create a new party
+				</button>
+			</section>
+		{:else if !party}
 			<section
 				class="relative z-2 m-auto flex w-[min(100%,620px)] flex-col items-center gap-5 px-5.5 pt-7 pb-10.5 text-center text-(--muted) max-[380px]:px-4"
 			>
@@ -331,8 +587,32 @@
 						</div>
 					</div>
 
+					<div class="relative mt-5 rounded-[17px] border border-white/8 bg-black/15 p-2.25">
+						<label
+							for="share-url"
+							class="mb-2 block px-1 text-[9px] font-bold tracking-[0.14em] text-(--muted) uppercase"
+							>Invite link</label
+						>
+						<div class="flex gap-2">
+							<input
+								id="share-url"
+								value={shareUrl}
+								readonly
+								aria-label="Shareable watch party link"
+								class="min-w-0 flex-1 rounded-xl border border-white/9 bg-white/4 px-3 py-2.75 text-[11px] text-[#c8c1d2] outline-none focus:border-[rgba(124,92,255,0.7)]"
+							/>
+							<button
+								type="button"
+								class="min-w-20 cursor-pointer rounded-xl border-0 bg-[linear-gradient(120deg,var(--purple),#9a79ff)] px-3 py-2.75 text-[11px] font-extrabold text-white shadow-[0_8px_22px_rgba(124,92,255,0.24)] transition-transform hover:-translate-y-px active:translate-y-px"
+								onclick={() => void copyShareLink()}
+							>
+								{copied ? 'Copied ✓' : 'Copy link'}
+							</button>
+						</div>
+					</div>
+
 					<div
-						class="mt-6 flex scrollbar-none gap-3.5 overflow-x-auto border-y border-white/6 py-4.25 [&::-webkit-scrollbar]:hidden"
+						class="mt-4.5 flex scrollbar-none gap-3.5 overflow-x-auto border-y border-white/6 py-4.25 [&::-webkit-scrollbar]:hidden"
 						aria-label="People in the room"
 					>
 						{#each party.players as player (player.id)}

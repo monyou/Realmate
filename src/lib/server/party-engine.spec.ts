@@ -47,6 +47,51 @@ const playAgain = (room: PartyEngine, playerId: string) => {
 };
 
 describe('PartyEngine', () => {
+	it('rejects an empty media array', () => {
+		expect(() => new PartyEngine([])).toThrow('non-empty array');
+	});
+
+	it('rejects the entire file when any item is missing a required field', () => {
+		expect(
+			() =>
+				new PartyEngine([
+					items[0],
+					{
+						title: 'Broken',
+						type: 'movie',
+						genres: ['Drama'],
+						img: '/broken.jpg',
+						year: 2026
+					}
+				] as Omit<MediaItem, 'id'>[])
+		).toThrow('Item 2 is missing required field "imdbRating"');
+	});
+
+	it.each([
+		['title', { ...items[0], title: 42 }, 'must be a non-empty string'],
+		['type', { ...items[0], type: 'documentary' }, 'must be either "movie" or "series"'],
+		['genres', { ...items[0], genres: 'Drama' }, 'must be a non-empty array of strings'],
+		[
+			'genres entry',
+			{ ...items[0], genres: ['Drama', 7] },
+			'genres[1]" must be a non-empty string'
+		],
+		['img', { ...items[0], img: null }, 'must be a non-empty string'],
+		['year', { ...items[0], year: '2026' }, 'must be an integer'],
+		['imdbRating', { ...items[0], imdbRating: 11 }, 'must be a number from 0 to 10']
+	])('rejects an invalid %s field', (_field, item, expected) => {
+		expect(() => new PartyEngine([item] as Omit<MediaItem, 'id'>[])).toThrow(expected);
+	});
+
+	it('rejects unsupported fields to enforce the documented object shape', () => {
+		expect(
+			() =>
+				new PartyEngine([
+					{ ...items[0], description: 'This field is not part of the media schema.' }
+				] as unknown as Omit<MediaItem, 'id'>[])
+		).toThrow('unsupported field "description"');
+	});
+
 	it('requires two connected people to start', () => {
 		const room = new PartyEngine(items);
 		room.connect('a', 'A');

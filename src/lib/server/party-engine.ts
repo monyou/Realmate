@@ -17,6 +17,10 @@ type PlayerRecord = {
 
 type SourceMediaItem = Omit<MediaItem, 'id'> & { id?: string };
 
+const requiredMediaFields = ['title', 'type', 'genres', 'img', 'year', 'imdbRating'] as const;
+const allowedMediaFields = new Set<string>(requiredMediaFields);
+const invalidMedia = (message: string) => new Error(`${message} Fix the JSON and try again.`);
+
 export type PersistedPartyEngine = {
 	version: 1;
 	items: MediaItem[];
@@ -65,9 +69,13 @@ export class PartyEngine {
 	private match: MediaItem | null = null;
 	private message: string | null = null;
 
-	constructor(sourceItems: SourceMediaItem[], random: () => number = Math.random) {
+	constructor(
+		sourceItems: SourceMediaItem[],
+		random: () => number = Math.random,
+		allowGeneratedId = false
+	) {
 		this.random = random;
-		this.items = this.normalizeMedia(sourceItems);
+		this.items = this.normalizeMedia(sourceItems, allowGeneratedId);
 	}
 
 	static restore(state: PersistedPartyEngine, random: () => number = Math.random) {
@@ -75,7 +83,7 @@ export class PartyEngine {
 			throw new Error('Unsupported persisted party state');
 		}
 
-		const engine = new PartyEngine(state.items, random);
+		const engine = new PartyEngine(state.items, random, true);
 		for (const player of state.players) engine.players.set(player.id, player);
 		engine.participantIds = state.participantIds;
 		engine.positions = new Map(state.positions);
@@ -126,30 +134,76 @@ export class PartyEngine {
 		return this.snapshot();
 	}
 
-	private normalizeMedia(sourceItems: SourceMediaItem[]) {
-		const items = sourceItems
-			.filter(
-				(item) =>
-					item &&
-					typeof item.title === 'string' &&
-					(item.type === 'movie' || item.type === 'series') &&
-					Array.isArray(item.genres) &&
-					item.genres.length > 0 &&
-					item.genres.every((genre) => typeof genre === 'string' && genre.trim().length > 0) &&
-					typeof item.img === 'string' &&
-					Number.isFinite(item.year) &&
-					Number.isFinite(item.imdbRating) &&
-					item.imdbRating >= 0 &&
-					item.imdbRating <= 10
-			)
-			.map((item, index) => ({
+	private normalizeMedia(sourceItems: SourceMediaItem[], allowGeneratedId = false) {
+		if (!Array.isArray(sourceItems) || sourceItems.length === 0) {
+			throw invalidMedia('The JSON file must contain a non-empty array of movies or series.');
+		}
+
+		const items = sourceItems.map((item, index) => {
+			const label = `Item ${index + 1}`;
+			if (!item || typeof item !== 'object' || Array.isArray(item)) {
+				throw invalidMedia(`${label} must be a JSON object.`);
+			}
+
+			for (const field of requiredMediaFields) {
+				if (!Object.hasOwn(item, field)) {
+					throw invalidMedia(`${label} is missing required field "${field}".`);
+				}
+			}
+
+			for (const field of Object.keys(item)) {
+				if (!allowedMediaFields.has(field) && !(allowGeneratedId && field === 'id')) {
+					throw invalidMedia(`${label} contains unsupported field "${field}".`);
+				}
+			}
+
+			if (typeof item.title !== 'string' || item.title.trim().length === 0) {
+				throw invalidMedia(`${label} field "title" must be a non-empty string.`);
+			}
+			if (item.type !== 'movie' && item.type !== 'series') {
+				throw invalidMedia(`${label} field "type" must be either "movie" or "series".`);
+			}
+			if (!Array.isArray(item.genres) || item.genres.length === 0) {
+				throw invalidMedia(`${label} field "genres" must be a non-empty array of strings.`);
+			}
+			for (const [genreIndex, genre] of item.genres.entries()) {
+				if (typeof genre !== 'string' || genre.trim().length === 0) {
+					throw invalidMedia(`${label} field "genres[${genreIndex}]" must be a non-empty string.`);
+				}
+			}
+			if (typeof item.img !== 'string' || item.img.trim().length === 0) {
+				throw invalidMedia(`${label} field "img" must be a non-empty string.`);
+			}
+			if (typeof item.year !== 'number' || !Number.isInteger(item.year)) {
+				throw invalidMedia(`${label} field "year" must be an integer.`);
+			}
+			if (
+				typeof item.imdbRating !== 'number' ||
+				!Number.isFinite(item.imdbRating) ||
+				item.imdbRating < 0 ||
+				item.imdbRating > 10
+			) {
+				throw invalidMedia(`${label} field "imdbRating" must be a number from 0 to 10.`);
+			}
+			if (item.id !== undefined && (typeof item.id !== 'string' || item.id.trim().length === 0)) {
+				throw invalidMedia(`${label} field "id" must be a non-empty string when provided.`);
+			}
+
+			return {
 				...item,
+				title: item.title.trim(),
+				img: item.img.trim(),
 				genres: item.genres.map((genre) => genre.trim()),
 				id: makeId(item, index)
-			}));
+			};
+		});
 
-		if (items.length === 0) {
-			throw new Error('Vercel Blob media.json must contain at least one valid movie or series');
+		const ids = new Set<string>();
+		for (const [index, item] of items.entries()) {
+			if (ids.has(item.id)) {
+				throw invalidMedia(`Item ${index + 1} has a duplicate "id" value.`);
+			}
+			ids.add(item.id);
 		}
 
 		return items;
