@@ -1,8 +1,8 @@
 # Reelmate
 
-A group swiping app for choosing a movie or series together. Everyone on the same URL joins one live room. A round ends immediately when every participant likes the same title, or after every participant finishes the deck without a match.
+A group swiping app for choosing a movie or series together. Create a room from a public JSON link or a local JSON file, then share its unique URL. A round ends immediately when every participant likes the same title, or after every participant finishes the deck without a match.
 
-Built with SvelteKit, Svelte 5, TypeScript, Tailwind CSS 4, Upstash Redis, Vercel Blob, and Bun.
+Built with SvelteKit, Svelte 5, TypeScript, Tailwind CSS 4, Upstash Redis, and Bun.
 
 ## Run it
 
@@ -29,19 +29,11 @@ Send the generated HTTPS URL to the other people. Redis credentials are mandator
 3. Confirm that the integration added `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` for the environments you will deploy.
 4. Deploy, or redeploy after connecting Redis so the new environment variables are included.
 
-No Vercel Blob token is required because `media.json` is public. The app refuses to run its party API without Redis credentials.
-
-`REALMATE_ROOM_KEY` is optional. Set it when multiple apps share one Redis database and should not share the same party state. Otherwise production and preview deployments use separate default keys based on `VERCEL_ENV`.
+The app refuses to run its party API without Redis credentials.
 
 ## Add your movies and series
 
-Replace `media.json` in the public `realmate-blob-store`. The app reads it from:
-
-```text
-https://epureihf1azmctan.public.blob.vercel-storage.com/media.json
-```
-
-The file must contain a JSON array. Each item must have exactly the data shape below; an internal stable ID is generated automatically.
+Open the app without a `room` query parameter. Paste a public HTTP/HTTPS link to a JSON file or upload a `.json` file from your device. The file can be up to 2 MB and must contain a JSON array. Each item must have the data shape below; an internal stable ID is generated automatically.
 
 ```json
 {
@@ -55,15 +47,19 @@ The file must contain a JSON array. Each item must have exactly the data shape b
 ```
 
 - `type` must be either `"movie"` or `"series"`.
+- Every object must include all six fields shown above. Missing fields, unsupported fields, or an invalid value in any object reject the complete file.
 - `genres` must be a non-empty array of genre names. Up to three are displayed on cards.
 - `img` can be any browser-accessible image URL.
+- `year` must be an integer.
 - `imdbRating` must be a number between `0` and `10` and is displayed with one decimal place.
-- The server shuffles the list once per round, and all participants receive the same order.
-- The media list is refreshed from Blob when someone starts a round. An active round keeps its existing deck, and a later round receives the updated file after Vercel's cache propagation, which may take up to 60 seconds.
+- The server validates and stores the list when the room is created.
+- The server shuffles the stored list once per round, and all participants receive the same order.
 
 ## How the room behaves
 
-- One URL is one shared room; there are no room codes or accounts.
+- Creating a party generates a random room ID and adds it to a shareable `?room=...` URL.
+- Everyone who opens the same generated URL joins the same isolated room; there are no accounts.
+- Active lobby and swiping rooms expire after 24 hours without a heartbeat. Completed rooms expire after two hours without a heartbeat. Redis lock keys have a 12-second safety expiry.
 - At least two connected people are required to start.
 - Anyone in the lobby can start a round for everyone.
 - People joining after a round starts spectate until the next round.
