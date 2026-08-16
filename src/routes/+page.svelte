@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { assets, resolve } from '$app/paths';
 	import Confetti from '$lib/components/Confetti.svelte';
+	import ReelmateLogo from '$lib/components/ReelmateLogo.svelte';
 	import type { MediaItem, PartyState } from '$lib/types';
+	import type { PageData } from './$types';
+
+	let { data }: { data: PageData } = $props();
 
 	const guestWords = ['Popcorn', 'Velvet', 'Cosmic', 'Midnight', 'Neon', 'Golden'];
 	const guestAnimals = ['Fox', 'Panda', 'Owl', 'Otter', 'Moth', 'Cat'];
@@ -15,19 +20,15 @@
 	];
 	const noiseBackground =
 		"url(\"data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E\")";
+	const defaultPoster = `${assets}/assets/default_poster.jpeg`;
 
 	let party = $state<PartyState | null>(null);
-	let roomId = $state('');
+	let roomId = $derived(data.roomId);
 	let shareUrl = $state('');
 	let playerId = $state('');
 	let playerName = $state('');
 	let connected = $state(false);
-	let pageReady = $state(false);
-	let sourceMode = $state<'url' | 'file'>('url');
-	let mediaUrl = $state('');
-	let mediaFile = $state<File | null>(null);
-	let creatingParty = $state(false);
-	let setupError = $state('');
+	let pageReady = $state(true);
 	let joinError = $state('');
 	let copied = $state(false);
 	let dragX = $state(0);
@@ -49,7 +50,6 @@
 		| { type: 'leave' };
 
 	type PartyResponse = { playerId: string; state: PartyState };
-	type CreatePartyResponse = PartyResponse & { roomId: string };
 
 	const me = $derived(party?.players.find((player) => player.id === playerId));
 	const currentItem = $derived(
@@ -88,7 +88,6 @@
 		playerName = localStorage.getItem('reelmate-player-name') ?? makeGuestName(guestSeed);
 		localStorage.setItem('reelmate-player-name', playerName);
 		let stopped = false;
-		roomId = new URL(window.location.href).searchParams.get('room') ?? '';
 		shareUrl = roomId ? makeShareUrl(roomId) : '';
 		pageReady = true;
 
@@ -179,64 +178,6 @@
 		} finally {
 			pollInFlight = false;
 		}
-	}
-
-	async function createParty() {
-		if (creatingParty || (sourceMode === 'url' ? !mediaUrl.trim() : !mediaFile)) return;
-		creatingParty = true;
-		setupError = '';
-		try {
-			let source: { mediaUrl: string } | { media: unknown };
-			if (sourceMode === 'file') {
-				if (!mediaFile) throw new Error('Choose a JSON file from your device.');
-				if (mediaFile.size > 2 * 1024 * 1024) {
-					throw new Error('The movie list is too large. The maximum size is 2 MB.');
-				}
-				let media: unknown;
-				try {
-					media = JSON.parse(await mediaFile.text());
-				} catch {
-					throw new Error('The selected file is not valid JSON.');
-				}
-				source = { media };
-			} else {
-				source = { mediaUrl: mediaUrl.trim() };
-			}
-
-			const response = await fetch('/api/party', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ type: 'create', name: playerName, ...source })
-			});
-			const body = (await response.json().catch(() => null)) as
-				CreatePartyResponse | { message?: string } | null;
-			if (!response.ok || !body || !('roomId' in body)) {
-				throw new Error(body && 'message' in body ? body.message : 'Could not create the party.');
-			}
-
-			roomId = body.roomId;
-			shareUrl = makeShareUrl(roomId);
-			history.replaceState({}, '', shareUrl);
-			applyResponse(body);
-			joinError = '';
-			startPolling();
-		} catch (error) {
-			setupError = error instanceof Error ? error.message : 'Could not create the party.';
-		} finally {
-			creatingParty = false;
-		}
-	}
-
-	function selectMediaFile(event: Event) {
-		mediaFile = (event.currentTarget as HTMLInputElement).files?.[0] ?? null;
-		setupError = '';
-	}
-
-	function switchSource(nextMode: 'url' | 'file') {
-		if (sourceMode === nextMode) return;
-		mediaFile = null;
-		setupError = '';
-		sourceMode = nextMode;
 	}
 
 	async function copyShareLink() {
@@ -335,7 +276,22 @@
 	}
 
 	function ratingLabel(item: MediaItem) {
-		return item.imdbRating.toFixed(1);
+		return item.imdbRating > 0 ? item.imdbRating.toFixed(1) : '?';
+	}
+
+	function ratingAriaLabel(item: MediaItem) {
+		return item.imdbRating > 0
+			? `IMDb rating ${ratingLabel(item)} out of 10`
+			: 'IMDb rating unknown';
+	}
+
+	function posterSource(item: MediaItem) {
+		return item.img.trim() || defaultPoster;
+	}
+
+	function useDefaultPoster(event: Event) {
+		const image = event.currentTarget as HTMLImageElement;
+		if (!image.src.endsWith(defaultPoster)) image.src = defaultPoster;
 	}
 </script>
 
@@ -371,32 +327,20 @@
 	<header
 		class="relative z-40 mx-auto flex w-[min(100%,1120px)] items-center justify-between px-5.5 pt-[max(20px,env(safe-area-inset-top))] pb-2 max-[380px]:px-4 min-[720px]:pt-7 [@media(max-height:760px)_and_(max-width:600px)]:pt-[max(14px,env(safe-area-inset-top))]"
 	>
-		<div class="flex items-center gap-2.5" aria-label="Reelmate home">
-			<span
-				class="relative grid size-7 rotate-[-8deg] place-items-center rounded-full border-2 border-(--rose) shadow-[0_0_24px_rgba(255,92,116,0.35)] before:absolute before:top-1 before:left-1.5 before:size-1 before:rounded-full before:bg-(--rose) before:content-[''] after:absolute after:top-1.25 after:right-1.25 after:size-1 after:rounded-full after:bg-(--rose) after:content-['']"
-				><span
-					class="size-2 rounded-full bg-(--rose) before:absolute before:bottom-1 before:left-1.5 before:size-1 before:rounded-full before:bg-(--rose) before:content-['']"
-				></span></span
-			>
-			<span class="text-lg font-extrabold tracking-[-0.04em]">reelmate</span>
-		</div>
+		<ReelmateLogo />
 
-		<div
-			class="flex items-center gap-2 rounded-full border border-white/9 bg-white/4.5 px-3 py-2 text-[11px] font-bold tracking-[0.06em] uppercase backdrop-blur-md"
-		>
-			<span
-				class="size-1.75 rounded-full bg-(--mint) shadow-[0_0_0_4px_rgba(66,232,193,0.12),0_0_12px_var(--mint)]"
-				class:bg-[var(--gold)]={roomId && !connected}
-				class:shadow-none={!connected || !roomId}
-			></span>
-			<span
-				>{roomId
-					? connected
-						? `${party?.onlineCount ?? 0} online`
-						: 'connecting'
-					: 'new party'}</span
+		{#if roomId}
+			<div
+				class="flex items-center gap-2 rounded-full border border-white/9 bg-white/4.5 px-3 py-2 text-[11px] font-bold tracking-[0.06em] uppercase backdrop-blur-md"
 			>
-		</div>
+				<span
+					class="size-1.75 rounded-full bg-(--mint) shadow-[0_0_0_4px_rgba(66,232,193,0.12),0_0_12px_var(--mint)]"
+					class:bg-[var(--gold)]={!connected}
+					class:shadow-none={!connected}
+				></span>
+				<span>{connected ? `${party?.onlineCount ?? 0} online` : 'connecting'}</span>
+			</div>
+		{/if}
 	</header>
 
 	<main class="grid w-full flex-1 place-items-center">
@@ -411,102 +355,73 @@
 			</section>
 		{:else if !roomId}
 			<section
-				class="relative z-2 m-auto w-[min(100%,620px)] px-5.5 pt-7 pb-10.5 text-center max-[380px]:px-4 min-[720px]:pt-10.5"
+				class="relative z-2 m-auto w-[min(100%,1120px)] px-5.5 pt-10 pb-14 text-center max-[380px]:px-4 min-[720px]:pt-16"
 			>
 				<div
 					class="mb-5 inline-flex items-center gap-2 text-[11px] font-extrabold tracking-[0.18em] text-[#d7d0e2] uppercase"
 				>
-					<span class="h-px w-6 bg-(--rose) shadow-[0_0_10px_var(--rose)]"></span> Build your deck
+					<span class="h-px w-6 bg-(--rose) shadow-[0_0_10px_var(--rose)]"></span> One room. One choice.
 				</div>
 				<h1
-					class="m-0 text-[clamp(42px,11vw,68px)] leading-[0.97] font-[850] tracking-[-0.065em] [&_em]:font-serif [&_em]:font-normal [&_em]:tracking-[-0.055em] [&_em]:text-(--rose)"
+					class="m-0 mx-auto max-w-220 text-[clamp(46px,9vw,88px)] leading-[0.94] font-[850] tracking-[-0.07em] [&_em]:font-serif [&_em]:font-normal [&_em]:tracking-[-0.055em] [&_em]:text-(--rose)"
 				>
-					Bring the list.<br /><em>Invite your people.</em>
+					Stop debating.<br /><em>Start matching.</em>
 				</h1>
-				<p class="mx-auto mt-5.5 max-w-127.5 text-[15px] leading-[1.65] text-(--muted)">
-					Paste a public link or choose a JSON file from your device. We’ll create a unique party
-					link for everyone to join.
+				<p class="mx-auto mt-6 max-w-155 text-[15px] leading-[1.7] text-(--muted)">
+					Save your movie and series lists, invite your people, and swipe together. Reelmate reveals
+					the first title everyone wants to watch.
 				</p>
 
-				<form
-					class="relative mx-auto mt-8.5 w-[min(100%,470px)] overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(30,26,40,0.92),rgba(16,14,22,0.96))] p-5.5 text-left shadow-[0_28px_80px_rgba(0,0,0,0.32),inset_0_1px_rgba(255,255,255,0.05)] backdrop-blur-[20px] max-[380px]:rounded-[23px] max-[380px]:p-4.5 min-[720px]:p-6.25"
-					onsubmit={(event) => {
-						event.preventDefault();
-						void createParty();
-					}}
-				>
-					<div
-						class="absolute -top-30 -right-22.5 size-60 rounded-full bg-[rgba(124,92,255,0.2)] blur-[48px]"
-					></div>
-					<div class="relative">
-						<div
-							class="mb-4 grid grid-cols-2 gap-1 rounded-[14px] border border-white/8 bg-black/20 p-1"
-							aria-label="Choose movie list source"
+				<div class="mt-8 flex flex-col items-center justify-center gap-3 min-[500px]:flex-row">
+					{#if data.user}
+						<a
+							href={resolve('/profile')}
+							class="inline-flex min-w-44 items-center justify-between gap-6 rounded-2xl bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-4 text-sm font-extrabold text-[#160b10] no-underline shadow-[0_14px_34px_rgba(255,63,102,.24)] transition hover:-translate-y-0.5"
+							><span>Open your lists</span><span>→</span></a
 						>
-							<button
-								type="button"
-								class={`cursor-pointer rounded-[10px] border-0 px-3 py-2.5 text-[11px] font-bold transition-colors ${sourceMode === 'url' ? 'bg-white/10 text-white' : 'bg-transparent text-(--muted)'}`}
-								onclick={() => switchSource('url')}>Paste a link</button
-							>
-							<button
-								type="button"
-								class={`cursor-pointer rounded-[10px] border-0 px-3 py-2.5 text-[11px] font-bold transition-colors ${sourceMode === 'file' ? 'bg-white/10 text-white' : 'bg-transparent text-(--muted)'}`}
-								onclick={() => switchSource('file')}>Upload a file</button
-							>
-						</div>
+					{:else}
+						<a
+							href={resolve('/login')}
+							class="inline-flex min-w-38 items-center justify-between gap-6 rounded-2xl bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-4 text-sm font-extrabold text-[#160b10] no-underline shadow-[0_14px_34px_rgba(255,63,102,.24)] transition hover:-translate-y-0.5"
+							><span>Log in</span><span>→</span></a
+						>
+						<a
+							href={resolve('/register')}
+							class="rounded-2xl border border-white/12 bg-white/5 px-5 py-4 text-sm font-extrabold text-white no-underline transition hover:bg-white/9"
+							>Create account</a
+						>
+					{/if}
+				</div>
 
-						{#if sourceMode === 'url'}
-							<label
-								for="media-url"
-								class="mb-2.5 block text-[10px] font-bold tracking-[0.15em] text-(--muted) uppercase"
-								>Movie list URL</label
-							>
-							<input
-								id="media-url"
-								type="url"
-								bind:value={mediaUrl}
-								placeholder="https://example.com/movies.json"
-								required
-								autocomplete="url"
-								aria-describedby="media-help"
-								class="box-border w-full rounded-[15px] border border-white/12 bg-black/20 px-4 py-3.75 text-[13px] text-(--ink) transition-[border-color,box-shadow] outline-none placeholder:text-[#68616f] focus:border-[rgba(124,92,255,0.75)] focus:shadow-[0_0_0_3px_rgba(124,92,255,0.14)]"
-							/>
-						{:else}
-							<label
-								for="media-file"
-								class="flex min-h-25 cursor-pointer flex-col items-center justify-center gap-2 rounded-[15px] border border-dashed border-white/18 bg-black/15 px-4 py-4 text-center transition-[border-color,background] hover:border-[rgba(124,92,255,0.7)] hover:bg-[rgba(124,92,255,0.07)]"
-							>
-								<span class="text-2xl text-(--purple)" aria-hidden="true">↑</span>
-								<strong class="max-w-full overflow-hidden text-xs text-ellipsis whitespace-nowrap">
-									{mediaFile ? mediaFile.name : 'Choose a JSON file'}
-								</strong>
-								<small class="text-[9px] text-(--muted)">JSON only · up to 2 MB</small>
-							</label>
-							<input
-								id="media-file"
-								type="file"
-								accept=".json,application/json"
-								required
-								class="sr-only"
-								onchange={selectMediaFile}
-							/>
-						{/if}
-						<p id="media-help" class="mt-2.5 text-[10px] leading-relaxed text-[#817a89]">
-							The JSON must contain an array of valid movies or series.
-						</p>
-						{#if setupError}
-							<p class="mt-3 text-xs leading-relaxed text-(--gold)" role="alert">{setupError}</p>
-						{/if}
-						<button
-							type="submit"
-							class="relative mt-4.5 flex w-full cursor-pointer items-center justify-between rounded-[17px] border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-4.25 font-extrabold tracking-[-0.02em] text-[#120a0f] shadow-[0_14px_34px_rgba(255,63,102,0.24),inset_0_1px_rgba(255,255,255,0.35)] transition-[transform,box-shadow,opacity] duration-150 ease-in-out hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-[0_18px_42px_rgba(255,63,102,0.32)] active:not-disabled:translate-y-px active:not-disabled:scale-[0.99] disabled:cursor-wait disabled:opacity-60 [&_b]:text-[23px] [&_b]:leading-none"
-							disabled={creatingParty || (sourceMode === 'url' ? !mediaUrl.trim() : !mediaFile)}
+				<div class="mx-auto mt-13 grid max-w-220 gap-3 text-left min-[700px]:grid-cols-3">
+					<div class="rounded-3xl border border-white/8 bg-white/3 p-5">
+						<span class="text-[10px] font-extrabold tracking-[0.16em] text-(--purple) uppercase"
+							>01 · Curate</span
 						>
-							<span>{creatingParty ? 'Checking your list…' : 'Create watch party'}</span>
-							<b aria-hidden="true">→</b>
-						</button>
+						<h2 class="mt-3 text-base font-extrabold">Build private lists</h2>
+						<p class="mt-2 text-xs leading-relaxed text-(--muted)">
+							Organize movies and series by mood, genre, or group.
+						</p>
 					</div>
-				</form>
+					<div class="rounded-3xl border border-white/8 bg-white/3 p-5">
+						<span class="text-[10px] font-extrabold tracking-[0.16em] text-(--rose) uppercase"
+							>02 · Invite</span
+						>
+						<h2 class="mt-3 text-base font-extrabold">Share one link</h2>
+						<p class="mt-2 text-xs leading-relaxed text-(--muted)">
+							Choose any combination of lists and open a live room.
+						</p>
+					</div>
+					<div class="rounded-3xl border border-white/8 bg-white/3 p-5">
+						<span class="text-[10px] font-extrabold tracking-[0.16em] text-(--mint) uppercase"
+							>03 · Match</span
+						>
+						<h2 class="mt-3 text-base font-extrabold">Swipe to agreement</h2>
+						<p class="mt-2 text-xs leading-relaxed text-(--muted)">
+							The first unanimous like becomes tonight’s watch.
+						</p>
+					</div>
+				</div>
 			</section>
 		{:else if joinError && !party}
 			<section
@@ -711,8 +626,9 @@
 						>
 							<img
 								class="pointer-events-none size-full object-cover select-none"
-								src={nextItem.img}
+								src={posterSource(nextItem)}
 								alt=""
+								onerror={useDefaultPoster}
 							/>
 						</div>
 					{/if}
@@ -729,9 +645,10 @@
 							>
 								<img
 									class="pointer-events-none size-full object-cover select-none"
-									src={currentItem.img}
+									src={posterSource(currentItem)}
 									alt={`${currentItem.title} poster`}
 									draggable="false"
+									onerror={useDefaultPoster}
 								/>
 								<div
 									class="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,4,8,0.02)_40%,rgba(5,4,8,0.42)_67%,rgba(5,4,8,0.97)_100%)]"
@@ -761,7 +678,7 @@
 										</div>
 										<div
 											class="inline-flex min-h-7 flex-none items-center gap-1 rounded-[9px] border border-[rgba(255,207,92,0.24)] bg-[rgba(12,10,16,0.62)] px-2 py-1.25 shadow-[inset_0_1px_rgba(255,255,255,0.06)] backdrop-blur-[10px]"
-											aria-label={`IMDb rating ${ratingLabel(currentItem)} out of 10`}
+											aria-label={ratingAriaLabel(currentItem)}
 										>
 											<span
 												class="text-[11px] text-(--gold) drop-shadow-[0_0_5px_rgba(255,207,92,0.32)]"
@@ -962,8 +879,9 @@
 					>
 						<img
 							class="pointer-events-none size-full object-cover select-none"
-							src={party.match.img}
+							src={posterSource(party.match)}
 							alt={`${party.match.title} poster`}
+							onerror={useDefaultPoster}
 						/>
 						<div
 							class="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,4,8,0.02)_40%,rgba(5,4,8,0.42)_67%,rgba(5,4,8,0.97)_100%)]"
@@ -981,7 +899,7 @@
 								</div>
 								<div
 									class="inline-flex min-h-6 flex-none items-center gap-1 rounded-[9px] border border-[rgba(255,207,92,0.24)] bg-[rgba(12,10,16,0.62)] px-1.5 py-1 shadow-[inset_0_1px_rgba(255,255,255,0.06)] backdrop-blur-[10px]"
-									aria-label={`IMDb rating ${ratingLabel(party.match)} out of 10`}
+									aria-label={ratingAriaLabel(party.match)}
 								>
 									<span
 										class="text-[11px] text-(--gold) drop-shadow-[0_0_5px_rgba(255,207,92,0.32)]"

@@ -1,7 +1,6 @@
 import { env } from '$env/dynamic/private';
-import type { PartyState } from '$lib/types';
+import type { PartyState, SourceMedia } from '$lib/types';
 import { Redis } from '@upstash/redis';
-import type { SourceMedia } from './media';
 import { PartyEngine, type PersistedPartyEngine } from './party-engine';
 
 type PartyOperation = (engine: PartyEngine) => PartyState | Promise<PartyState>;

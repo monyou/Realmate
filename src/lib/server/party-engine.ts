@@ -15,11 +15,12 @@ type PlayerRecord = {
 	lastSeenAt: number;
 };
 
-type SourceMediaItem = Omit<MediaItem, 'id'> & { id?: string };
+type SourceMediaItem = Omit<MediaItem, 'id' | 'img' | 'imdbRating'> &
+	Partial<Pick<MediaItem, 'img' | 'imdbRating'>> & { id?: string };
 
-const requiredMediaFields = ['title', 'type', 'genres', 'img', 'year', 'imdbRating'] as const;
-const allowedMediaFields = new Set<string>(requiredMediaFields);
-const invalidMedia = (message: string) => new Error(`${message} Fix the JSON and try again.`);
+const requiredMediaFields = ['title', 'type', 'genres', 'year'] as const;
+const allowedMediaFields = new Set<string>([...requiredMediaFields, 'img', 'imdbRating']);
+const invalidMedia = (message: string) => new Error(`${message} Check the list and try again.`);
 
 export type PersistedPartyEngine = {
 	version: 1;
@@ -136,13 +137,13 @@ export class PartyEngine {
 
 	private normalizeMedia(sourceItems: SourceMediaItem[], allowGeneratedId = false) {
 		if (!Array.isArray(sourceItems) || sourceItems.length === 0) {
-			throw invalidMedia('The JSON file must contain a non-empty array of movies or series.');
+			throw invalidMedia('The list must contain at least one movie or series.');
 		}
 
 		const items = sourceItems.map((item, index) => {
 			const label = `Item ${index + 1}`;
 			if (!item || typeof item !== 'object' || Array.isArray(item)) {
-				throw invalidMedia(`${label} must be a JSON object.`);
+				throw invalidMedia(`${label} must be a valid movie or series entry.`);
 			}
 
 			for (const field of requiredMediaFields) {
@@ -171,17 +172,23 @@ export class PartyEngine {
 					throw invalidMedia(`${label} field "genres[${genreIndex}]" must be a non-empty string.`);
 				}
 			}
-			if (typeof item.img !== 'string' || item.img.trim().length === 0) {
-				throw invalidMedia(`${label} field "img" must be a non-empty string.`);
-			}
-			if (typeof item.year !== 'number' || !Number.isInteger(item.year)) {
-				throw invalidMedia(`${label} field "year" must be an integer.`);
+			if (item.img !== undefined && typeof item.img !== 'string') {
+				throw invalidMedia(`${label} field "img" must be a string when provided.`);
 			}
 			if (
-				typeof item.imdbRating !== 'number' ||
-				!Number.isFinite(item.imdbRating) ||
-				item.imdbRating < 0 ||
-				item.imdbRating > 10
+				typeof item.year !== 'number' ||
+				!Number.isInteger(item.year) ||
+				item.year < 1888 ||
+				item.year > 2100
+			) {
+				throw invalidMedia(`${label} field "year" must be an integer from 1888 to 2100.`);
+			}
+			if (
+				item.imdbRating !== undefined &&
+				(typeof item.imdbRating !== 'number' ||
+					!Number.isFinite(item.imdbRating) ||
+					item.imdbRating < 0 ||
+					item.imdbRating > 10)
 			) {
 				throw invalidMedia(`${label} field "imdbRating" must be a number from 0 to 10.`);
 			}
@@ -192,7 +199,8 @@ export class PartyEngine {
 			return {
 				...item,
 				title: item.title.trim(),
-				img: item.img.trim(),
+				img: item.img?.trim() ?? '',
+				imdbRating: item.imdbRating ?? 0,
 				genres: item.genres.map((genre) => genre.trim()),
 				id: makeId(item, index)
 			};
