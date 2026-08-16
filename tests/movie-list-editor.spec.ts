@@ -42,4 +42,26 @@ describe('MovieListEditor', () => {
 		expect(body).not.toContain('Title is required.');
 		expect(body).not.toMatch(/<button type="submit" disabled=""[^>]*>Save changes/);
 	});
+
+	it('keeps the submitted version and blocks another save after an edit conflict', () => {
+		const { body } = render(MovieListEditor, {
+			props: {
+				mode: 'edit',
+				expectedUpdatedAt: 'newer-version',
+				form: {
+					conflict: true,
+					message: 'Refresh the page.',
+					values: {
+						name: 'Stale edit',
+						description: '',
+						itemsJson: '[]',
+						expectedUpdatedAt: 'stale-version'
+					}
+				}
+			}
+		});
+
+		expect(body).toContain('name="expectedUpdatedAt" value="stale-version"');
+		expect(body).toMatch(/<button type="submit" disabled=""[^>]*>Refresh required/);
+	});
 });

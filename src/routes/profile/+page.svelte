@@ -2,9 +2,22 @@
 	import type { ActionData, PageData } from './$types';
 	import { resolve } from '$app/paths';
 	import ReelmateLogo from '$lib/components/ReelmateLogo.svelte';
+	import ShareListDialog from '$lib/components/ShareListDialog.svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	let selected = $state<string[]>([]);
+	let shareList = $state<{ id: string; name: string } | null>(null);
+	let deleteTarget = $state<{ id: string; name: string } | null>(null);
+	let deleteDialog: HTMLDialogElement;
+
+	const confirmDelete = (list: { id: string; name: string }) => {
+		deleteTarget = list;
+		deleteDialog.showModal();
+	};
+	const cancelDelete = () => {
+		deleteDialog.close();
+		deleteTarget = null;
+	};
 
 	const formatDate = (value: string) =>
 		new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric' }).format(
@@ -114,13 +127,14 @@
 					class="overflow-hidden rounded-[26px] border border-white/9 bg-[linear-gradient(145deg,rgba(28,24,38,.9),rgba(15,13,20,.96))] shadow-[0_22px_70px_rgba(0,0,0,.25)]"
 				>
 					<div
-						class="hidden grid-cols-[32px_minmax(0,1fr)_90px_120px_40px] gap-4 border-b border-white/7 px-5 py-3 text-[10px] font-extrabold tracking-[0.14em] text-(--muted) uppercase min-[720px]:grid"
+						class="hidden grid-cols-[32px_28px_minmax(0,1fr)_90px_120px_120px] gap-4 border-b border-white/7 px-5 py-3 text-[10px] font-extrabold tracking-[0.14em] text-(--muted) uppercase min-[720px]:grid"
 					>
-						<span></span><span>List</span><span>Titles</span><span>Last updated</span><span></span>
+						<span></span><span></span><span>List</span><span>Titles</span><span>Last updated</span
+						><span></span>
 					</div>
 					{#each data.lists as list (list.id)}
 						<div
-							class="grid grid-cols-[34px_minmax(0,1fr)_auto_38px] items-center gap-3 border-b border-white/6 px-4 py-5 transition last:border-0 hover:bg-white/3 min-[720px]:grid-cols-[32px_minmax(0,1fr)_90px_120px_40px] min-[720px]:gap-4 min-[720px]:px-5"
+							class="grid grid-cols-[34px_26px_minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-white/6 px-4 py-5 transition last:border-0 hover:bg-white/3 min-[720px]:grid-cols-[32px_28px_minmax(0,1fr)_90px_120px_120px] min-[720px]:gap-4 min-[720px]:px-5"
 						>
 							<input
 								type="checkbox"
@@ -130,6 +144,26 @@
 								aria-label={`Select ${list.name}`}
 								class="size-4.5 cursor-pointer accent-[#ff5c74]"
 							/>
+							<span class="grid size-7 place-items-center text-(--purple)">
+								{#if list.isShared}
+									<svg
+										viewBox="0 0 24 24"
+										class="size-4"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										aria-label={`${list.name} is shared`}
+										role="img"
+									>
+										<circle cx="18" cy="5" r="3" />
+										<circle cx="6" cy="12" r="3" />
+										<circle cx="18" cy="19" r="3" />
+										<path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4" />
+									</svg>
+								{/if}
+							</span>
 							<span class="min-w-0"
 								><strong class="block truncate text-sm text-white">{list.name}</strong
 								>{#if list.description}<small class="mt-1 block truncate text-[11px] text-(--muted)"
@@ -142,30 +176,116 @@
 							<span class="hidden text-xs text-(--muted) min-[720px]:block"
 								>{formatDate(list.updatedAt)}</span
 							>
-							<a
-								href={resolve('/profile/lists/[id]/edit', { id: list.id })}
-								aria-label={`Edit ${list.name}`}
-								title={`Edit ${list.name}`}
-								class="grid size-9 place-items-center rounded-xl border border-white/10 bg-white/4 text-(--muted) no-underline transition hover:border-(--purple)/50 hover:bg-(--purple)/10 hover:text-white"
-							>
-								<svg
-									viewBox="0 0 24 24"
-									class="size-4"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									aria-hidden="true"
+							<div class="flex justify-end gap-1">
+								<a
+									href={resolve('/profile/lists/[id]/edit', { id: list.id })}
+									aria-label={`Edit ${list.name}`}
+									title={`Edit ${list.name}`}
+									class="grid size-9 place-items-center rounded-xl border border-white/10 bg-white/4 text-(--muted) no-underline transition hover:border-(--purple)/50 hover:bg-(--purple)/10 hover:text-white"
 								>
-									<path d="M12 20h9" />
-									<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-								</svg>
-							</a>
+									<svg
+										viewBox="0 0 24 24"
+										class="size-4"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										aria-hidden="true"
+									>
+										<path d="M12 20h9" />
+										<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+									</svg>
+								</a>
+								{#if list.isOwner}
+									<button
+										type="button"
+										onclick={() => (shareList = { id: list.id, name: list.name })}
+										aria-label={`Share ${list.name}`}
+										title={`Share ${list.name}`}
+										class="grid size-9 cursor-pointer place-items-center rounded-xl border border-white/10 bg-white/4 text-(--muted) transition hover:border-(--purple)/50 hover:bg-(--purple)/10 hover:text-white"
+									>
+										<svg
+											viewBox="0 0 24 24"
+											class="size-4"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											aria-hidden="true"
+										>
+											<circle cx="18" cy="5" r="3" />
+											<circle cx="6" cy="12" r="3" />
+											<circle cx="18" cy="19" r="3" />
+											<path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4" />
+										</svg>
+									</button>
+									<button
+										type="button"
+										onclick={() => confirmDelete({ id: list.id, name: list.name })}
+										aria-label={`Delete ${list.name}`}
+										title={`Delete ${list.name}`}
+										class="grid size-9 cursor-pointer place-items-center rounded-xl border border-white/10 bg-white/4 text-(--muted) transition hover:border-[#ff5c74]/50 hover:bg-[#ff5c74]/10 hover:text-[#ff8ca0]"
+									>
+										<svg
+											viewBox="0 0 24 24"
+											class="size-4"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											aria-hidden="true"
+										>
+											<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5" />
+										</svg>
+									</button>
+								{/if}
+							</div>
 						</div>
 					{/each}
 				</div>
 			</form>
 		{/if}
 	</main>
+
+	<ShareListDialog list={shareList} onClose={() => (shareList = null)} />
+
+	<dialog
+		bind:this={deleteDialog}
+		oncancel={(event) => {
+			event.preventDefault();
+			cancelDelete();
+		}}
+		onclick={(event) => {
+			if (event.target === deleteDialog) cancelDelete();
+		}}
+		class="m-auto box-border w-[min(92vw,460px)] rounded-[26px] border border-white/12 bg-[#14111a] p-0 text-(--ink) shadow-[0_30px_100px_rgba(0,0,0,.65)] backdrop:bg-black/75"
+	>
+		<div class="p-6">
+			<p class="text-[10px] font-extrabold tracking-[0.16em] text-[#ff8ca0] uppercase">
+				Delete list
+			</p>
+			<h2 class="mt-2 text-2xl font-extrabold tracking-[-0.04em]">Delete {deleteTarget?.name}?</h2>
+			<p class="mt-3 text-sm leading-relaxed text-(--muted)">
+				This permanently removes the list for you and everyone it is shared with. This cannot be
+				undone.
+			</p>
+			<form method="POST" action="?/deleteList" class="mt-6 flex justify-end gap-3">
+				<input type="hidden" name="listId" value={deleteTarget?.id ?? ''} />
+				<button
+					type="button"
+					onclick={cancelDelete}
+					class="cursor-pointer rounded-xl border border-white/10 bg-white/3 px-4 py-3 text-sm font-bold text-white"
+					>Cancel</button
+				>
+				<button
+					type="submit"
+					class="cursor-pointer rounded-xl border border-[#ff5c74]/35 bg-[#ff5c74]/12 px-4 py-3 text-sm font-extrabold text-[#ff9aac]"
+					>Delete list</button
+				>
+			</form>
+		</div>
+	</dialog>
 </div>

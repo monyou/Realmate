@@ -21,7 +21,9 @@
 			name?: string;
 			description?: string;
 			itemsJson?: string;
+			expectedUpdatedAt?: string;
 		};
+		conflict?: boolean;
 	} | null;
 
 	type Props = {
@@ -30,6 +32,7 @@
 		initialName?: string;
 		initialDescription?: string;
 		initialItems?: unknown;
+		expectedUpdatedAt?: string;
 	};
 
 	let {
@@ -37,7 +40,8 @@
 		form = null,
 		initialName = '',
 		initialDescription = '',
-		initialItems = []
+		initialItems = [],
+		expectedUpdatedAt = ''
 	}: Props = $props();
 	let itemSequence = 0;
 
@@ -87,6 +91,7 @@
 	};
 	const restoreName = () => form?.values?.name ?? initialName;
 	const restoreDescription = () => form?.values?.description ?? initialDescription;
+	const submittedVersion = $derived(form?.values?.expectedUpdatedAt ?? expectedUpdatedAt);
 
 	let listName = $state(restoreName());
 	let description = $state(restoreDescription());
@@ -206,6 +211,9 @@
 
 		<form method="POST" class="mt-9 space-y-6" novalidate onsubmit={handleSubmit}>
 			<input type="hidden" name="items" value={payload} />
+			{#if mode === 'edit'}
+				<input type="hidden" name="expectedUpdatedAt" value={submittedVersion} />
+			{/if}
 			<section
 				class="grid gap-5 rounded-[26px] border border-white/9 bg-white/3 p-5 min-[700px]:grid-cols-2 min-[700px]:p-7"
 			>
@@ -493,8 +501,13 @@
 					>Cancel</a
 				><button
 					type="submit"
-					class="cursor-pointer rounded-2xl border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-6 py-3.5 text-sm font-extrabold text-[#160b10] shadow-[0_12px_30px_rgba(255,63,102,.22)] transition hover:-translate-y-0.5"
-					>{mode === 'create' ? 'Create list' : 'Save changes'} →</button
+					disabled={Boolean(form?.conflict)}
+					class="cursor-pointer rounded-2xl border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-6 py-3.5 text-sm font-extrabold text-[#160b10] shadow-[0_12px_30px_rgba(255,63,102,.22)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+					>{form?.conflict
+						? 'Refresh required'
+						: mode === 'create'
+							? 'Create list'
+							: 'Save changes'} →</button
 				>
 			</div>
 		</form>

@@ -8,11 +8,11 @@ import type { SourceMedia } from '$lib/types';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = await requireUser(locals);
-	const { data, error } = await requireSupabase(locals)
+	const supabase = requireSupabase(locals);
+	const { data, error } = await supabase
 		.from('movie_lists')
-		.select('id, name, description, items, created_at, updated_at')
-		.eq('user_id', user.id)
-		.order('created_at', { ascending: false });
+		.select('id, user_id, name, description, items, created_at, updated_at')
+		.order('updated_at', { ascending: false });
 
 	if (error) {
 		console.error('Could not load movie lists', error);
@@ -23,6 +23,24 @@ export const load: PageServerLoad = async ({ locals }) => {
 		};
 	}
 
+	const ownedIds = data.filter((list) => list.user_id === user.id).map((list) => list.id);
+	let sharedOwnedIds = new Set<string>();
+	if (ownedIds.length > 0) {
+		const { data: shares, error: sharesError } = await supabase
+			.from('movie_list_shares')
+			.select('list_id')
+			.in('list_id', ownedIds);
+		if (sharesError) {
+			console.error('Could not load movie list sharing metadata', sharesError);
+			return {
+				user: { email: user.email ?? '' },
+				lists: [],
+				loadError: 'Your lists could not be loaded.'
+			};
+		}
+		sharedOwnedIds = new Set(shares.map((share) => share.list_id));
+	}
+
 	return {
 		user: { email: user.email ?? '' },
 		lists: data.map((list) => ({
@@ -30,7 +48,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 			name: list.name,
 			description: list.description,
 			itemCount: Array.isArray(list.items) ? list.items.length : 0,
-			updatedAt: list.updated_at ?? list.created_at
+			updatedAt: list.updated_at ?? list.created_at,
+			isOwner: list.user_id === user.id,
+			isShared: list.user_id !== user.id || sharedOwnedIds.has(list.id)
 		})),
 		loadError: ''
 	};
@@ -53,7 +73,6 @@ export const actions: Actions = {
 		const { data, error } = await requireSupabase(locals)
 			.from('movie_lists')
 			.select('id, items')
-			.eq('user_id', user.id)
 			.in('id', selectedIds);
 		if (error || data.length !== selectedIds.length) {
 			return fail(400, { message: 'One or more selected lists are unavailable.' });
@@ -84,6 +103,29 @@ export const actions: Actions = {
 			return fail(503, { message: 'The matching room could not be created. Please try again.' });
 		}
 		redirect(303, `/?room=${encodeURIComponent(created.roomId)}`);
+	},
+	deleteList: async ({ request, locals }) => {
+		const user = await requireUser(locals);
+		const listId = String((await request.formData()).get('listId') ?? '');
+		if (!/^[0-9a-f-]{36}$/i.test(listId)) {
+			return fail(400, { message: 'The selected list is invalid.' });
+		}
+
+		const { data, error } = await requireSupabase(locals)
+			.from('movie_lists')
+			.delete()
+			.eq('id', listId)
+			.eq('user_id', user.id)
+			.select('id')
+			.maybeSingle();
+
+		if (error) {
+			console.error('Could not delete movie list', error);
+			return fail(500, { message: 'The list could not be deleted. Please try again.' });
+		}
+		if (!data) return fail(404, { message: 'The list was not found or you do not own it.' });
+
+		return { deleted: true };
 	},
 	logout: async ({ locals }) => {
 		if (locals.supabase) await locals.supabase.auth.signOut();

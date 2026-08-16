@@ -11,4 +11,5 @@
 	initialName={data.list.name}
 	initialDescription={data.list.description}
 	initialItems={data.list.items}
+	expectedUpdatedAt={data.list.updatedAt}
 />
