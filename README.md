@@ -1,39 +1,86 @@
 # Reelmate
 
-A group swiping app for choosing a movie or series together. Create a room from a public JSON link or a local JSON file, then share its unique URL. A round ends immediately when every participant likes the same title, or after every participant finishes the deck without a match.
+Reelmate helps a group choose a movie or series together. Account owners build private watch lists, select one or more lists, and open a shareable room. Everyone swipes through the same deck until the first unanimous match.
 
-Built with SvelteKit, Svelte 5, TypeScript, Tailwind CSS 4, Upstash Redis, and Bun.
+Built with SvelteKit 2, Svelte 5, TypeScript, Tailwind CSS 4, Supabase Auth/Postgres, Upstash Redis, Vercel, and Bun.
 
-## Run it
+## Architecture
+
+- **Supabase Auth** owns email/password accounts and cookie-based SSR sessions.
+- **Supabase Postgres** stores each user's private movie lists. Row Level Security restricts every list to its owner.
+- **Upstash Redis** stores short-lived live-room state and serializes party mutations.
+- **SvelteKit server actions** validate list data, enforce authentication, and create rooms.
+- **Supabase Storage is not required yet.** Poster images are stored as external URLs; Storage can be added later for user uploads.
+
+## User flow
+
+1. A visitor lands on the public product page and chooses **Log in** or **Create account**.
+2. After authentication, the visitor reaches `/profile`.
+3. **New list** opens a form where multiple movies or series can be added.
+4. The profile shows every saved list with a checkbox.
+5. Selecting one or more lists reveals **Start matching**.
+6. Reelmate combines the selected lists, creates a Redis-backed room, and redirects to its shareable `?room=...` link.
+7. Guests can join the room without an account. At least two connected people are required to start swiping.
+
+## Local setup
+
+Install dependencies and create the local environment file:
 
 ```bash
 bun install
 cp .env.example .env
+```
+
+Fill these values in `.env`:
+
+```dotenv
+PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_YOUR_KEY
+UPSTASH_REDIS_REST_URL=https://YOUR_DATABASE.upstash.io
+UPSTASH_REDIS_REST_TOKEN=YOUR_REDIS_TOKEN
+```
+
+The Supabase URL and publishable key are available from the project's **Connect** dialog. Do not put a service-role or secret key in a `PUBLIC_` variable.
+
+### Create the database table
+
+Apply [`supabase/migrations/20260816000000_create_movie_lists.sql`](supabase/migrations/20260816000000_create_movie_lists.sql) through the Supabase SQL editor, or run `supabase db push` after linking the repository with the Supabase CLI.
+
+The migration creates `public.movie_lists`, enables Row Level Security, and adds owner-only select, insert, update, and delete policies based on `auth.uid()`.
+
+### Configure authentication
+
+Email/password authentication is enabled by default on hosted Supabase projects. Hosted projects also require email confirmation by default.
+
+In **Authentication → URL Configuration**:
+
+- Set the development Site URL to `http://localhost:5173` when testing locally.
+- Add `http://localhost:5173/auth/callback` to the redirect allow list.
+- Add the production equivalent, such as `https://your-domain.com/auth/callback`, before deploying.
+
+Supabase's default email sender is intended for testing and is rate-limited. Configure custom SMTP before production use.
+
+### Start the app
+
+```bash
 bun run dev
 ```
 
-Fill `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` in `.env`, then open [http://localhost:5173](http://localhost:5173). The dev server listens on the local network, so phones on the same Wi-Fi can also use the network URL printed by Vite.
-
-To share it through ngrok:
-
-```bash
-ngrok http 5173
-```
-
-Send the generated HTTPS URL to the other people. Redis credentials are mandatory in every environment; there is no separate in-memory implementation.
+Open [http://localhost:5173](http://localhost:5173).
 
 ## Deploy to Vercel
 
-1. Import this repository into Vercel. The repository includes the official SvelteKit Vercel adapter and pins Node.js 22.
-2. In the Vercel project, open **Storage**, add an **Upstash Redis** database from the Marketplace, and connect it to this project.
-3. Confirm that the integration added `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` for the environments you will deploy.
-4. Deploy, or redeploy after connecting Redis so the new environment variables are included.
+1. Import the repository into Vercel. The project uses the official SvelteKit Vercel adapter and Node.js 22.
+2. Add the two public Supabase variables to every required Vercel environment.
+3. Connect an Upstash Redis database and add its REST URL and token.
+4. Add the production `/auth/callback` URL to Supabase's redirect allow list.
+5. Deploy or redeploy so the functions receive the updated variables.
 
-The app refuses to run its party API without Redis credentials.
+The app deliberately has no in-memory fallback. Both local development and production use Redis for rooms.
 
-## Add your movies and series
+## Movie and series fields
 
-Open the app without a `room` query parameter. Paste a public HTTP/HTTPS link to a JSON file or upload a `.json` file from your device. The file can be up to 2 MB and must contain a JSON array. Each item must have the data shape below; an internal stable ID is generated automatically.
+Every list entry contains:
 
 ```json
 {
@@ -46,29 +93,28 @@ Open the app without a `room` query parameter. Paste a public HTTP/HTTPS link to
 }
 ```
 
-- `type` must be either `"movie"` or `"series"`.
-- Every object must include all six fields shown above. Missing fields, unsupported fields, or an invalid value in any object reject the complete file.
-- `genres` must be a non-empty array of genre names. Up to three are displayed on cards.
-- `img` can be any browser-accessible image URL.
-- `year` must be an integer.
-- `imdbRating` must be a number between `0` and `10` and is displayed with one decimal place.
-- The server validates and stores the list when the room is created.
-- The server shuffles the stored list once per round, and all participants receive the same order.
+- `type` must be `movie` or `series`.
+- `genres` must contain at least one non-empty genre.
+- `year` must be an integer from `1888` to `2100`.
+- `img` is optional. When omitted, the bundled default poster is shown.
+- `imdbRating` is optional. When omitted or set to `0`, the rating is shown as unknown.
+- A list can contain up to 500 titles.
+- The complete list is rejected if any entry is invalid.
 
-## How the room behaves
+## Room behavior
 
-- Creating a party generates a random room ID and adds it to a shareable `?room=...` URL.
-- Everyone who opens the same generated URL joins the same isolated room; there are no accounts.
-- Active lobby and swiping rooms expire after 24 hours without a heartbeat. Completed rooms expire after two hours without a heartbeat. Redis lock keys have a 12-second safety expiry.
-- At least two connected people are required to start.
-- Anyone in the lobby can start a round for everyone.
+- Creating a party generates a unique room ID in a shareable `?room=...` URL.
+- Guests do not need accounts to join an existing room.
+- Active lobby and swiping rooms expire after 24 hours without a heartbeat. Completed rooms expire after two hours.
+- Anyone in the lobby can start when at least two people are connected.
 - People joining after a round starts spectate until the next round.
 - A title matches only after every round participant swipes right on it.
-- Starting another round clears every participant's previous choices; delayed messages from an older round are ignored.
-- Someone can refresh without losing their place. After an eight-second disconnect, a missing participant is removed; if fewer than two remain, the room returns to the lobby.
-- Swiping works with touch, mouse drag, buttons, and the left/right arrow keys.
+- Refreshing preserves a participant's place. An absent participant is removed after the disconnect timeout.
+- Swiping supports touch, mouse drag, buttons, and left/right arrow keys.
 
 ## Quality checks
+
+All unit tests live in the top-level `tests/` directory.
 
 ```bash
 bun run check
@@ -76,5 +122,3 @@ bun run test
 bun run lint
 bun run build
 ```
-
-The unit tests cover the minimum-player rule, immediate unanimous matches, completion without a match, and rejection of out-of-order votes.

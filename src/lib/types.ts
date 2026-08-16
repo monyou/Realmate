@@ -10,6 +10,8 @@ export type MediaItem = {
 	imdbRating: number;
 };
 
+export type SourceMedia = Omit<MediaItem, 'id'>[];
+
 export type PlayerView = {
 	id: string;
 	name: string;

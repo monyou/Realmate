@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { MediaItem } from '../types';
-import { PartyEngine } from './party-engine';
+import { PartyEngine } from '$lib/server/party-engine';
+import type { MediaItem } from '$lib/types';
 
 const items: Omit<MediaItem, 'id'>[] = [
 	{
@@ -48,7 +48,7 @@ const playAgain = (room: PartyEngine, playerId: string) => {
 
 describe('PartyEngine', () => {
 	it('rejects an empty media array', () => {
-		expect(() => new PartyEngine([])).toThrow('non-empty array');
+		expect(() => new PartyEngine([])).toThrow('at least one movie or series');
 	});
 
 	it('rejects the entire file when any item is missing a required field', () => {
@@ -61,10 +61,26 @@ describe('PartyEngine', () => {
 						type: 'movie',
 						genres: ['Drama'],
 						img: '/broken.jpg',
-						year: 2026
+						imdbRating: 8
 					}
 				] as Omit<MediaItem, 'id'>[])
-		).toThrow('Item 2 is missing required field "imdbRating"');
+		).toThrow('Item 2 is missing required field "year"');
+	});
+
+	it('normalizes optional poster and rating values when they are omitted', () => {
+		const room = new PartyEngine([
+			{
+				title: 'Without metadata',
+				type: 'movie',
+				genres: ['Drama'],
+				year: 2026
+			}
+		]);
+
+		room.connect('a', 'A');
+		room.connect('b', 'B');
+		const [item] = room.start({ playerId: 'a' }).deck;
+		expect(item).toMatchObject({ img: '', imdbRating: 0 });
 	});
 
 	it.each([
@@ -76,7 +92,7 @@ describe('PartyEngine', () => {
 			{ ...items[0], genres: ['Drama', 7] },
 			'genres[1]" must be a non-empty string'
 		],
-		['img', { ...items[0], img: null }, 'must be a non-empty string'],
+		['img', { ...items[0], img: null }, 'must be a string when provided'],
 		['year', { ...items[0], year: '2026' }, 'must be an integer'],
 		['imdbRating', { ...items[0], imdbRating: 11 }, 'must be a number from 0 to 10']
 	])('rejects an invalid %s field', (_field, item, expected) => {
