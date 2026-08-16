@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { tick } from 'svelte';
+	import { enhance } from '$app/forms';
 	import type { ActionData, PageData } from './$types';
+	import type { SubmitFunction } from '@sveltejs/kit';
 	import { resolve } from '$app/paths';
 	import { emailValidationMessage, loginPasswordValidationMessage } from '$lib/auth-validation';
+	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import ReelmateLogo from '$lib/components/ReelmateLogo.svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -10,16 +13,26 @@
 	let email = $state(restoreEmail());
 	let password = $state('');
 	let validationAttempted = $state(false);
+	let submitting = $state(false);
 	const emailError = $derived(validationAttempted ? emailValidationMessage(email) : '');
 	const passwordError = $derived(
 		validationAttempted ? loginPasswordValidationMessage(password) : ''
 	);
 
-	const handleSubmit = (event: SubmitEvent) => {
+	const handleSubmit: SubmitFunction = ({ cancel }) => {
 		validationAttempted = true;
-		if (!emailValidationMessage(email) && !loginPasswordValidationMessage(password)) return;
+		if (!emailValidationMessage(email) && !loginPasswordValidationMessage(password)) {
+			submitting = true;
+			return async ({ update }) => {
+				try {
+					await update();
+				} finally {
+					submitting = false;
+				}
+			};
+		}
 
-		event.preventDefault();
+		cancel();
 		void tick().then(() => {
 			document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
 		});
@@ -77,7 +90,7 @@
 				</p>
 			{/if}
 
-			<form method="POST" class="mt-7 space-y-4" novalidate onsubmit={handleSubmit}>
+			<form method="POST" class="mt-7 space-y-4" novalidate use:enhance={handleSubmit}>
 				<div>
 					<label class="mb-2 block text-xs font-bold text-[#d8d2e2]" for="email">Email</label>
 					<input
@@ -139,3 +152,5 @@
 		</section>
 	</main>
 </div>
+
+<LoadingOverlay visible={submitting} label="Logging in…" />
