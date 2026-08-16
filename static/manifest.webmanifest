@@ -1,0 +1,32 @@
+{
+	"id": "/",
+	"name": "Reelmate — Find what to watch together",
+	"short_name": "Reelmate",
+	"description": "Build shared watch lists and swipe together to find the movie or series everyone wants to watch.",
+	"start_url": "/",
+	"scope": "/",
+	"display": "standalone",
+	"background_color": "#0b0910",
+	"theme_color": "#0b0910",
+	"categories": ["entertainment", "social"],
+	"icons": [
+		{
+			"src": "/icons/icon-192.png",
+			"sizes": "192x192",
+			"type": "image/png",
+			"purpose": "any"
+		},
+		{
+			"src": "/icons/icon-512.png",
+			"sizes": "512x512",
+			"type": "image/png",
+			"purpose": "any"
+		},
+		{
+			"src": "/icons/icon-maskable-512.png",
+			"sizes": "512x512",
+			"type": "image/png",
+			"purpose": "maskable"
+		}
+	]
+}
