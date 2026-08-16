@@ -1,6 +1,9 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
 	import type { ActionData, PageData } from './$types';
+	import type { SubmitFunction } from '@sveltejs/kit';
 	import { resolve } from '$app/paths';
+	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import ReelmateLogo from '$lib/components/ReelmateLogo.svelte';
 	import ShareListDialog from '$lib/components/ShareListDialog.svelte';
 
@@ -9,6 +12,22 @@
 	let shareList = $state<{ id: string; name: string } | null>(null);
 	let deleteTarget = $state<{ id: string; name: string } | null>(null);
 	let deleteDialog: HTMLDialogElement;
+	let submitting = $state(false);
+	let loadingLabel = $state('Working on it…');
+
+	const handleSubmit: SubmitFunction = ({ formElement }) => {
+		loadingLabel = formElement.dataset.loadingLabel ?? 'Working on it…';
+		const closeDialogOnSuccess = formElement.dataset.closeDialogOnSuccess === 'true';
+		submitting = true;
+		return async ({ result, update }) => {
+			try {
+				if (closeDialogOnSuccess && result.type === 'success') cancelDelete();
+				await update();
+			} finally {
+				submitting = false;
+			}
+		};
+	};
 
 	const confirmDelete = (list: { id: string; name: string }) => {
 		deleteTarget = list;
@@ -45,7 +64,12 @@
 				<span class="hidden max-w-56 truncate text-xs text-(--muted) min-[600px]:block"
 					>{data.user.email}</span
 				>
-				<form method="POST" action="?/logout">
+				<form
+					method="POST"
+					action="?/logout"
+					data-loading-label="Logging out…"
+					use:enhance={handleSubmit}
+				>
 					<button
 						class="cursor-pointer rounded-full border border-white/10 bg-white/4 px-4 py-2 text-xs font-bold text-white transition hover:bg-white/9"
 						>Log out</button
@@ -105,7 +129,13 @@
 				</div>
 			</section>
 		{:else}
-			<form method="POST" action="?/startParty" class="mt-10">
+			<form
+				method="POST"
+				action="?/startParty"
+				class="mt-10"
+				data-loading-label="Starting your party…"
+				use:enhance={handleSubmit}
+			>
 				{#if selected.length > 0}
 					<div
 						class="mb-5 flex items-center justify-between gap-4 rounded-2xl border border-white/12 bg-[#18141f]/95 p-3 pl-5 shadow-[0_16px_50px_rgba(0,0,0,.3)] backdrop-blur-xl"
@@ -272,7 +302,14 @@
 				This permanently removes the list for you and everyone it is shared with. This cannot be
 				undone.
 			</p>
-			<form method="POST" action="?/deleteList" class="mt-6 flex justify-end gap-3">
+			<form
+				method="POST"
+				action="?/deleteList"
+				class="mt-6 flex justify-end gap-3"
+				data-loading-label="Deleting your list…"
+				data-close-dialog-on-success="true"
+				use:enhance={handleSubmit}
+			>
 				<input type="hidden" name="listId" value={deleteTarget?.id ?? ''} />
 				<button
 					type="button"
@@ -289,3 +326,5 @@
 		</div>
 	</dialog>
 </div>
+
+<LoadingOverlay visible={submitting} label={loadingLabel} />

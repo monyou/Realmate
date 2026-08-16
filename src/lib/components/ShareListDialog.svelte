@@ -130,7 +130,13 @@
 		</div>
 
 		{#if loading}
-			<p class="my-10 text-center text-sm text-(--muted)">Loading shared friends…</p>
+			<div class="my-10 flex flex-col items-center text-center" role="status">
+				<span
+					class="size-8 animate-[reel-spin_1.15s_linear_infinite] rounded-full border-2 border-white/15 border-t-(--rose)"
+					aria-hidden="true"
+				></span>
+				<p class="mt-3 text-sm text-(--muted)">Loading shared friends…</p>
+			</div>
 		{:else}
 			<div class="mt-6 max-h-[45vh] space-y-3 overflow-y-auto pr-1">
 				{#if rows.length === 0}
@@ -221,8 +227,11 @@
 				type="button"
 				disabled={loading || saving}
 				onclick={save}
-				class="cursor-pointer rounded-xl border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-3 text-sm font-extrabold text-[#160b10] disabled:cursor-not-allowed disabled:opacity-50"
-				>{saving ? 'Sending…' : 'Send'}</button
+				class="inline-flex min-w-24 cursor-pointer items-center justify-center gap-2 rounded-xl border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-3 text-sm font-extrabold text-[#160b10] disabled:cursor-not-allowed disabled:opacity-50"
+				>{#if saving}<span
+						class="size-3.5 animate-[reel-spin_.9s_linear_infinite] rounded-full border-2 border-[#160b10]/25 border-t-[#160b10]"
+						aria-hidden="true"
+					></span>Sending…{:else}Send{/if}</button
 			>
 		</div>
 	</div>

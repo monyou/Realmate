@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { tick } from 'svelte';
+	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
+	import type { SubmitFunction } from '@sveltejs/kit';
 	import GenreCombobox from '$lib/components/GenreCombobox.svelte';
+	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import ReelmateLogo from '$lib/components/ReelmateLogo.svelte';
 	import { MEDIA_GENRES, validateGenreInput } from '$lib/media-genres';
 
@@ -99,6 +102,7 @@
 	let description = $state(restoreDescription());
 	let items = $state<DraftItem[]>(restoreItems());
 	let showListErrors = $state(false);
+	let submitting = $state(false);
 
 	const genreValidation = (item: DraftItem) => validateGenreInput(item.genres);
 	const hasValidGenres = (item: DraftItem) => genreValidation(item).valid;
@@ -162,7 +166,7 @@
 		if (items.length > 1) items = items.filter((item) => item.key !== key);
 	};
 
-	const handleSubmit = (event: SubmitEvent) => {
+	const handleSubmit: SubmitFunction = ({ cancel }) => {
 		showListErrors = !hasValidListDetails();
 		for (const item of items) {
 			if (!isComplete(item)) {
@@ -170,9 +174,18 @@
 				item.expanded = true;
 			}
 		}
-		if (!hasValidationErrors) return;
+		if (!hasValidationErrors) {
+			submitting = true;
+			return async ({ update }) => {
+				try {
+					await update();
+				} finally {
+					submitting = false;
+				}
+			};
+		}
 
-		event.preventDefault();
+		cancel();
 		void tick().then(() => {
 			document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
 		});
@@ -215,7 +228,7 @@
 				: 'Change the list details or any title, then save your updates.'}
 		</p>
 
-		<form method="POST" class="mt-9 space-y-6" novalidate onsubmit={handleSubmit}>
+		<form method="POST" class="mt-9 space-y-6" novalidate use:enhance={handleSubmit}>
 			<input type="hidden" name="items" value={payload} />
 			{#if mode === 'edit'}
 				<input type="hidden" name="expectedUpdatedAt" value={submittedVersion} />
@@ -518,3 +531,8 @@
 		</form>
 	</main>
 </div>
+
+<LoadingOverlay
+	visible={submitting}
+	label={mode === 'create' ? 'Creating your list…' : 'Saving your changes…'}
+/>

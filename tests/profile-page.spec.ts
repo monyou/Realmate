@@ -44,5 +44,6 @@ describe('profile list table', () => {
 		expect(body).toContain('aria-label="Edit Shared by a friend"');
 		expect(body).not.toContain('aria-label="Share Shared by a friend"');
 		expect(body).not.toContain('aria-label="Delete Shared by a friend"');
+		expect(body).toContain('data-close-dialog-on-success="true"');
 	});
 });
