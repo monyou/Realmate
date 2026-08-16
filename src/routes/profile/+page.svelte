@@ -11,6 +11,7 @@
 	let selected = $state<string[]>([]);
 	let shareList = $state<{ id: string; name: string } | null>(null);
 	let deleteTarget = $state<{ id: string; name: string } | null>(null);
+	let openListDetails = $state<string | null>(null);
 	let deleteDialog: HTMLDialogElement;
 	let submitting = $state(false);
 	let loadingLabel = $state('Working on it…');
@@ -37,6 +38,10 @@
 		deleteDialog.close();
 		deleteTarget = null;
 	};
+	const toggleListDetails = (event: MouseEvent, listId: string) => {
+		event.stopPropagation();
+		openListDetails = openListDetails === listId ? null : listId;
+	};
 
 	const formatDate = (value: string) =>
 		new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric' }).format(
@@ -48,6 +53,13 @@
 	<title>Your lists — Reelmate</title>
 	<meta name="description" content="Manage your Reelmate movie and series lists." />
 </svelte:head>
+
+<svelte:window
+	onclick={() => (openListDetails = null)}
+	onkeydown={(event) => {
+		if (event.key === 'Escape') openListDetails = null;
+	}}
+/>
 
 <div class="relative isolate min-h-dvh overflow-hidden bg-[#0b0910] text-(--ink)">
 	<div
@@ -154,7 +166,7 @@
 						{form.message}
 					</p>{/if}
 				<div
-					class="overflow-hidden rounded-[26px] border border-white/9 bg-[linear-gradient(145deg,rgba(28,24,38,.9),rgba(15,13,20,.96))] shadow-[0_22px_70px_rgba(0,0,0,.25)]"
+					class="overflow-visible rounded-[26px] border border-white/9 bg-[linear-gradient(145deg,rgba(28,24,38,.9),rgba(15,13,20,.96))] shadow-[0_22px_70px_rgba(0,0,0,.25)] min-[720px]:overflow-hidden"
 				>
 					<div
 						class="hidden grid-cols-[32px_28px_minmax(0,1fr)_90px_120px_120px] gap-4 border-b border-white/7 px-5 py-3 text-[10px] font-extrabold tracking-[0.14em] text-(--muted) uppercase min-[720px]:grid"
@@ -194,7 +206,41 @@
 									</svg>
 								{/if}
 							</span>
-							<span class="min-w-0"
+							<div class="relative min-w-0 min-[720px]:hidden">
+								<button
+									type="button"
+									onclick={(event) => toggleListDetails(event, list.id)}
+									aria-label={`Show full name and description for ${list.name}`}
+									aria-expanded={openListDetails === list.id}
+									aria-describedby={openListDetails === list.id
+										? `list-details-${list.id}`
+										: undefined}
+									class="block w-full min-w-0 cursor-pointer border-0 bg-transparent p-0 text-left"
+								>
+									<strong class="block truncate text-sm text-white">{list.name}</strong>
+									{#if list.description}<small
+											class="mt-1 block truncate text-[11px] text-(--muted)"
+											>{list.description}</small
+										>{/if}
+								</button>
+								{#if openListDetails === list.id}
+									<div
+										id={`list-details-${list.id}`}
+										role="tooltip"
+										class="absolute top-[calc(100%+10px)] left-0 z-50 w-[min(72vw,320px)] rounded-2xl border border-white/14 bg-[#18141f] p-4 text-left shadow-[0_18px_50px_rgba(0,0,0,.55)]"
+									>
+										<strong class="block text-sm leading-snug wrap-break-word text-white"
+											>{list.name}</strong
+										>
+										<p class="mt-2 text-xs leading-relaxed wrap-break-word text-(--muted)">
+											{list.description || 'No description'}
+										</p>
+									</div>
+								{/if}
+							</div>
+							<span
+								class="hidden min-w-0 min-[720px]:block"
+								title={list.description ? `${list.name} — ${list.description}` : list.name}
 								><strong class="block truncate text-sm text-white">{list.name}</strong
 								>{#if list.description}<small class="mt-1 block truncate text-[11px] text-(--muted)"
 										>{list.description}</small
