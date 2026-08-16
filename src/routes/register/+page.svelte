@@ -1,9 +1,43 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import type { ActionData, PageData } from './$types';
 	import { resolve } from '$app/paths';
+	import {
+		confirmPasswordValidationMessage,
+		emailValidationMessage,
+		registrationPasswordValidationMessage
+	} from '$lib/auth-validation';
 	import ReelmateLogo from '$lib/components/ReelmateLogo.svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+	const restoreEmail = () => form?.email ?? '';
+	let email = $state(restoreEmail());
+	let password = $state('');
+	let confirmPassword = $state('');
+	let validationAttempted = $state(false);
+	const emailError = $derived(validationAttempted ? emailValidationMessage(email) : '');
+	const passwordError = $derived(
+		validationAttempted ? registrationPasswordValidationMessage(password) : ''
+	);
+	const confirmPasswordError = $derived(
+		validationAttempted ? confirmPasswordValidationMessage(password, confirmPassword) : ''
+	);
+
+	const handleSubmit = (event: SubmitEvent) => {
+		validationAttempted = true;
+		if (
+			!emailValidationMessage(email) &&
+			!registrationPasswordValidationMessage(password) &&
+			!confirmPasswordValidationMessage(password, confirmPassword)
+		) {
+			return;
+		}
+
+		event.preventDefault();
+		void tick().then(() => {
+			document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+		});
+	};
 </script>
 
 <svelte:head>
@@ -58,40 +92,75 @@
 					>
 				</div>
 			{:else}
-				<form method="POST" class="mt-7 space-y-4">
-					<label class="block text-xs font-bold text-[#d8d2e2]" for="email">Email</label>
-					<input
-						id="email"
-						name="email"
-						type="email"
-						value={form?.email ?? ''}
-						required
-						autocomplete="email"
-						placeholder="you@example.com"
-						class="box-border w-full rounded-2xl border border-white/12 bg-black/20 px-4 py-3.5 text-sm text-white outline-none placeholder:text-[#68616f] focus:border-(--purple) focus:ring-3 focus:ring-(--purple)/15"
-					/>
-					<label class="block text-xs font-bold text-[#d8d2e2]" for="password">Password</label>
-					<input
-						id="password"
-						name="password"
-						type="password"
-						minlength="8"
-						required
-						autocomplete="new-password"
-						class="box-border w-full rounded-2xl border border-white/12 bg-black/20 px-4 py-3.5 text-sm text-white outline-none focus:border-(--purple) focus:ring-3 focus:ring-(--purple)/15"
-					/>
-					<label class="block text-xs font-bold text-[#d8d2e2]" for="confirmPassword"
-						>Confirm password</label
-					>
-					<input
-						id="confirmPassword"
-						name="confirmPassword"
-						type="password"
-						minlength="8"
-						required
-						autocomplete="new-password"
-						class="box-border w-full rounded-2xl border border-white/12 bg-black/20 px-4 py-3.5 text-sm text-white outline-none focus:border-(--purple) focus:ring-3 focus:ring-(--purple)/15"
-					/>
+				<form method="POST" class="mt-7 space-y-4" novalidate onsubmit={handleSubmit}>
+					<div>
+						<label class="mb-2 block text-xs font-bold text-[#d8d2e2]" for="email">Email</label>
+						<input
+							id="email"
+							name="email"
+							type="email"
+							bind:value={email}
+							required
+							autocomplete="email"
+							placeholder="you@example.com"
+							aria-invalid={Boolean(emailError)}
+							aria-describedby={emailError ? 'email-error' : undefined}
+							class="box-border w-full rounded-2xl border bg-black/20 px-4 py-3.5 text-sm text-white outline-none placeholder:text-[#68616f] focus:border-(--purple) focus:ring-3 focus:ring-(--purple)/15 {emailError
+								? 'border-[#ff5c74]/70 ring-3 ring-[#ff5c74]/10'
+								: 'border-white/12'}"
+						/>
+						{#if emailError}<small
+								id="email-error"
+								class="mt-1.5 block text-[10px] font-semibold text-[#ff8ca0]">{emailError}</small
+							>{/if}
+					</div>
+					<div>
+						<label class="mb-2 block text-xs font-bold text-[#d8d2e2]" for="password"
+							>Password</label
+						>
+						<input
+							id="password"
+							name="password"
+							type="password"
+							bind:value={password}
+							minlength="8"
+							required
+							autocomplete="new-password"
+							aria-invalid={Boolean(passwordError)}
+							aria-describedby={passwordError ? 'password-error' : undefined}
+							class="box-border w-full rounded-2xl border bg-black/20 px-4 py-3.5 text-sm text-white outline-none focus:border-(--purple) focus:ring-3 focus:ring-(--purple)/15 {passwordError
+								? 'border-[#ff5c74]/70 ring-3 ring-[#ff5c74]/10'
+								: 'border-white/12'}"
+						/>
+						{#if passwordError}<small
+								id="password-error"
+								class="mt-1.5 block text-[10px] font-semibold text-[#ff8ca0]">{passwordError}</small
+							>{/if}
+					</div>
+					<div>
+						<label class="mb-2 block text-xs font-bold text-[#d8d2e2]" for="confirmPassword"
+							>Confirm password</label
+						>
+						<input
+							id="confirmPassword"
+							name="confirmPassword"
+							type="password"
+							bind:value={confirmPassword}
+							minlength="8"
+							required
+							autocomplete="new-password"
+							aria-invalid={Boolean(confirmPasswordError)}
+							aria-describedby={confirmPasswordError ? 'confirm-password-error' : undefined}
+							class="box-border w-full rounded-2xl border bg-black/20 px-4 py-3.5 text-sm text-white outline-none focus:border-(--purple) focus:ring-3 focus:ring-(--purple)/15 {confirmPasswordError
+								? 'border-[#ff5c74]/70 ring-3 ring-[#ff5c74]/10'
+								: 'border-white/12'}"
+						/>
+						{#if confirmPasswordError}<small
+								id="confirm-password-error"
+								class="mt-1.5 block text-[10px] font-semibold text-[#ff8ca0]"
+								>{confirmPasswordError}</small
+							>{/if}
+					</div>
 					{#if form?.message}<p class="text-xs leading-relaxed text-(--gold)" role="alert">
 							{form.message}
 						</p>{/if}

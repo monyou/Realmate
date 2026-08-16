@@ -1,7 +1,7 @@
 import { env } from '$env/dynamic/public';
 import { createServerClient } from '@supabase/ssr';
 import type { Handle } from '@sveltejs/kit';
-import type { Database } from '$lib/database.types';
+import type { Database } from '$lib/types';
 
 export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.supabase = null;
