@@ -6,6 +6,7 @@ import type {
 	PlayerView,
 	VotePayload
 } from '../types.ts';
+import { validateMediaGenres } from '../media-genres.ts';
 
 type PlayerRecord = {
 	id: string;
@@ -164,13 +165,9 @@ export class PartyEngine {
 			if (item.type !== 'movie' && item.type !== 'series') {
 				throw invalidMedia(`${label} field "type" must be either "movie" or "series".`);
 			}
-			if (!Array.isArray(item.genres) || item.genres.length === 0) {
-				throw invalidMedia(`${label} field "genres" must be a non-empty array of strings.`);
-			}
-			for (const [genreIndex, genre] of item.genres.entries()) {
-				if (typeof genre !== 'string' || genre.trim().length === 0) {
-					throw invalidMedia(`${label} field "genres[${genreIndex}]" must be a non-empty string.`);
-				}
+			const genreValidation = validateMediaGenres(item.genres);
+			if (!genreValidation.valid) {
+				throw invalidMedia(`${label} field "genres" is invalid. ${genreValidation.message}`);
 			}
 			if (item.img !== undefined && typeof item.img !== 'string') {
 				throw invalidMedia(`${label} field "img" must be a string when provided.`);
@@ -201,7 +198,7 @@ export class PartyEngine {
 				title: item.title.trim(),
 				img: item.img?.trim() ?? '',
 				imdbRating: item.imdbRating ?? 0,
-				genres: item.genres.map((genre) => genre.trim()),
+				genres: genreValidation.genres,
 				id: makeId(item, index)
 			};
 		});

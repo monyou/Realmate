@@ -12,6 +12,11 @@ describe('MovieListEditor', () => {
 		expect(body).not.toContain('Type is required.');
 		expect(body).not.toContain('At least one genre is required.');
 		expect(body).not.toContain('Year is required.');
+		expect(body).toContain('Enter 1–3 genres separated with commas.');
+		expect(body).toContain('Available genres');
+		expect(body).toContain('role="combobox"');
+		expect(body).toContain('aria-autocomplete="list"');
+		expect(body).toMatch(/<details open="" class="[^"]*overflow-visible[^"]*open:z-20/);
 		expect(body).not.toMatch(/<button type="submit" disabled=""[^>]*>Create list/);
 	});
 

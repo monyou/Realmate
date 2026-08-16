@@ -94,7 +94,10 @@ Every list entry contains:
 ```
 
 - `type` must be `movie` or `series`.
-- `genres` must contain at least one non-empty genre.
+- `genres` must contain 1–3 unique IMDb genres. In the editor, enter them separated by commas.
+- Accepted genres are: Action, Adult, Adventure, Animation, Biography, Comedy, Crime,
+  Documentary, Drama, Family, Fantasy, Film-Noir, Game-Show, History, Horror, Music, Musical,
+  Mystery, News, Reality-TV, Romance, Sci-Fi, Short, Sport, Talk-Show, Thriller, War, and Western.
 - `year` must be an integer from `1888` to `2100`.
 - `img` is optional. When omitted, the bundled default poster is shown.
 - `imdbRating` is optional. When omitted or set to `0`, the rating is shown as unknown.
