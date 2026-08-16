@@ -3,6 +3,7 @@
 	import { assets, resolve } from '$app/paths';
 	import Confetti from '$lib/components/Confetti.svelte';
 	import ReelmateLogo from '$lib/components/ReelmateLogo.svelte';
+	import { normalizeRoomCode, partyRoomPath } from '$lib/party-room';
 	import type { MediaItem, PartyState } from '$lib/types';
 	import type { PageData } from './$types';
 
@@ -24,12 +25,15 @@
 
 	let party = $state<PartyState | null>(null);
 	let roomId = $derived(data.roomId);
-	let shareUrl = $state('');
+	let roomCode = $state('');
+	let joinCode = $state('');
+	let joinPartyOpen = $state(false);
 	let playerId = $state('');
 	let playerName = $state('');
 	let connected = $state(false);
 	let pageReady = $state(true);
 	let joinError = $state('');
+	let roomMissing = $state(false);
 	let copied = $state(false);
 	let dragX = $state(0);
 	let dragging = $state(false);
@@ -88,7 +92,7 @@
 		playerName = localStorage.getItem('reelmate-player-name') ?? makeGuestName(guestSeed);
 		localStorage.setItem('reelmate-player-name', playerName);
 		let stopped = false;
-		shareUrl = roomId ? makeShareUrl(roomId) : '';
+		roomCode = roomId;
 		pageReady = true;
 
 		if (roomId) {
@@ -128,10 +132,6 @@
 		return `/api/party?room=${encodeURIComponent(roomId)}`;
 	}
 
-	function makeShareUrl(id: string) {
-		return `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(id)}`;
-	}
-
 	function applyResponse(response: PartyResponse) {
 		playerId = response.playerId;
 		if (!party || response.state.revision >= party.revision) party = response.state;
@@ -147,13 +147,15 @@
 			});
 			if (!response.ok) {
 				const body = (await response.json().catch(() => null)) as { message?: string } | null;
+				roomMissing = response.status === 404;
 				throw new Error(body?.message ?? `Party request failed (${response.status})`);
 			}
 			applyResponse((await response.json()) as PartyResponse);
 			joinError = '';
+			roomMissing = false;
 			return true;
 		} catch (error) {
-			console.error(error);
+			if (!roomMissing) console.error(error);
 			connected = false;
 			joinError = error instanceof Error ? error.message : 'The watch party is unavailable.';
 			return false;
@@ -180,12 +182,12 @@
 		}
 	}
 
-	async function copyShareLink() {
-		if (!shareUrl) return;
+	async function copyRoomCode() {
+		if (!roomCode) return;
 		try {
-			await navigator.clipboard.writeText(shareUrl);
+			await navigator.clipboard.writeText(roomCode);
 		} catch {
-			const input = document.querySelector<HTMLInputElement>('#share-url');
+			const input = document.querySelector<HTMLInputElement>('#room-code');
 			input?.select();
 			document.execCommand('copy');
 			window.getSelection()?.removeAllRanges();
@@ -194,8 +196,23 @@
 		setTimeout(() => (copied = false), 1_800);
 	}
 
-	function createAnotherParty() {
+	function returnHome() {
 		window.location.href = window.location.pathname;
+	}
+
+	function joinParty() {
+		if (!joinPartyOpen) {
+			joinPartyOpen = true;
+			return;
+		}
+
+		if (!normalizeRoomCode(joinCode)) return;
+		window.location.href = partyRoomPath(window.location.pathname, joinCode);
+	}
+
+	function submitJoinParty(event: SubmitEvent) {
+		event.preventDefault();
+		joinParty();
 	}
 
 	function makeGuestName(id: string) {
@@ -329,7 +346,7 @@
 	>
 		<ReelmateLogo />
 
-		{#if roomId}
+		{#if roomId && !roomMissing}
 			<div
 				class="flex items-center gap-2 rounded-full border border-white/9 bg-white/4.5 px-3 py-2 text-[11px] font-bold tracking-[0.06em] uppercase backdrop-blur-md"
 			>
@@ -372,7 +389,7 @@
 					the first title everyone wants to watch.
 				</p>
 
-				<div class="mt-8 flex flex-col items-center justify-center gap-3 min-[500px]:flex-row">
+				<div class="mt-8 flex flex-row items-center justify-center gap-3">
 					{#if data.user}
 						<a
 							href={resolve('/profile')}
@@ -393,6 +410,49 @@
 					{/if}
 				</div>
 
+				<div class="mx-auto mt-3 w-[min(100%,520px)]">
+					{#if joinPartyOpen}
+						<form
+							class="grid gap-3 rounded-3xl border border-white/9 bg-white/3 p-3 text-left min-[560px]:grid-cols-[minmax(0,1fr)_auto] min-[560px]:items-end"
+							onsubmit={submitJoinParty}
+						>
+							<div class="min-w-0">
+								<label
+									for="join-room-code"
+									class="mb-2 block px-1 text-[10px] font-bold tracking-[0.08em] text-(--muted) uppercase"
+								>
+									Enter the party room code you received
+								</label>
+								<input
+									id="join-room-code"
+									bind:value={joinCode}
+									type="text"
+									inputmode="text"
+									autocomplete="off"
+									spellcheck="false"
+									placeholder="Paste room code"
+									class="w-full rounded-2xl border border-white/10 bg-black/18 px-4 py-3.5 font-mono text-sm text-white transition outline-none focus:border-(--purple)"
+								/>
+							</div>
+							<button
+								type="submit"
+								disabled={!normalizeRoomCode(joinCode)}
+								class="inline-flex w-full cursor-pointer items-center justify-between gap-6 rounded-2xl border border-white/12 bg-white/7 px-5 py-3.5 text-sm font-extrabold text-white transition hover:not-disabled:bg-white/11 disabled:cursor-not-allowed disabled:opacity-40 min-[560px]:w-auto"
+							>
+								<span>Join party</span><span aria-hidden="true">→</span>
+							</button>
+						</form>
+					{:else}
+						<button
+							type="button"
+							class="inline-flex min-w-40 cursor-pointer items-center justify-between gap-6 rounded-2xl border border-white/12 bg-white/5 px-5 py-3.5 text-sm font-extrabold text-white transition hover:bg-white/9"
+							onclick={joinParty}
+						>
+							<span>Join party</span><span aria-hidden="true">→</span>
+						</button>
+					{/if}
+				</div>
+
 				<div class="mx-auto mt-13 grid max-w-220 gap-3 text-left min-[700px]:grid-cols-3">
 					<div class="rounded-3xl border border-white/8 bg-white/3 p-5">
 						<span class="text-[10px] font-extrabold tracking-[0.16em] text-(--purple) uppercase"
@@ -407,9 +467,9 @@
 						<span class="text-[10px] font-extrabold tracking-[0.16em] text-(--rose) uppercase"
 							>02 · Invite</span
 						>
-						<h2 class="mt-3 text-base font-extrabold">Share one link</h2>
+						<h2 class="mt-3 text-base font-extrabold">Share one code</h2>
 						<p class="mt-2 text-xs leading-relaxed text-(--muted)">
-							Choose any combination of lists and open a live room.
+							Choose any combination of lists and invite people into a live room.
 						</p>
 					</div>
 					<div class="rounded-3xl border border-white/8 bg-white/3 p-5">
@@ -433,16 +493,16 @@
 					!
 				</div>
 				<h1 class="m-0 text-[clamp(38px,10vw,58px)] leading-none font-[850] tracking-[-0.06em]">
-					Party unavailable
+					{roomMissing ? 'No such party exists' : 'Party unavailable'}
 				</h1>
 				<p class="mx-auto mt-5 max-w-105 text-[15px] leading-[1.65] text-(--muted)" role="alert">
-					{joinError}
+					{roomMissing ? 'This party room does not exist or is no longer available.' : joinError}
 				</p>
 				<button
 					class="mt-7 cursor-pointer rounded-[15px] border border-white/12 bg-white/7 px-5 py-3.5 font-bold text-(--ink) transition-colors hover:bg-white/11"
-					onclick={createAnotherParty}
+					onclick={returnHome}
 				>
-					Create a new party
+					Return home
 				</button>
 			</section>
 		{:else if !party}
@@ -504,24 +564,24 @@
 
 					<div class="relative mt-5 rounded-[17px] border border-white/8 bg-black/15 p-2.25">
 						<label
-							for="share-url"
+							for="room-code"
 							class="mb-2 block px-1 text-[9px] font-bold tracking-[0.14em] text-(--muted) uppercase"
-							>Invite link</label
+							>Party room code</label
 						>
 						<div class="flex gap-2">
 							<input
-								id="share-url"
-								value={shareUrl}
+								id="room-code"
+								value={roomCode}
 								readonly
-								aria-label="Shareable watch party link"
-								class="min-w-0 flex-1 rounded-xl border border-white/9 bg-white/4 px-3 py-2.75 text-[11px] text-[#c8c1d2] outline-none focus:border-[rgba(124,92,255,0.7)]"
+								aria-label="Watch party room code"
+								class="min-w-0 flex-1 rounded-xl border border-white/9 bg-white/4 px-3 py-2.75 font-mono text-[11px] tracking-[0.03em] text-[#c8c1d2] outline-none focus:border-[rgba(124,92,255,0.7)]"
 							/>
 							<button
 								type="button"
 								class="min-w-20 cursor-pointer rounded-xl border-0 bg-[linear-gradient(120deg,var(--purple),#9a79ff)] px-3 py-2.75 text-[11px] font-extrabold text-white shadow-[0_8px_22px_rgba(124,92,255,0.24)] transition-transform hover:-translate-y-px active:translate-y-px"
-								onclick={() => void copyShareLink()}
+								onclick={() => void copyRoomCode()}
 							>
-								{copied ? 'Copied ✓' : 'Copy link'}
+								{copied ? 'Copied ✓' : 'Copy code'}
 							</button>
 						</div>
 					</div>
@@ -577,7 +637,7 @@
 						<span class="text-(--gold)">✦</span>
 						{readyToStart
 							? 'Anyone can start — it begins for everyone'
-							: 'Share this page with at least one person'}
+							: 'Share the room code with at least one person'}
 					</p>
 				</div>
 			</section>

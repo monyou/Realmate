@@ -19,8 +19,8 @@ Built with SvelteKit 2, Svelte 5, TypeScript, Tailwind CSS 4, Supabase Auth/Post
 3. **New list** opens a form where multiple movies or series can be added.
 4. The profile shows every saved list with a checkbox.
 5. Selecting one or more lists reveals **Start matching**.
-6. Reelmate combines the selected lists, creates a Redis-backed room, and redirects to its shareable `?room=...` link.
-7. Guests can join the room without an account. At least two connected people are required to start swiping.
+6. Reelmate combines the selected lists, creates a Redis-backed room, and shows its copyable room code.
+7. Guests can open Reelmate, choose **Join party**, and enter the code without creating an account. At least two connected people are required to start swiping.
 
 ## Local setup
 
@@ -106,7 +106,8 @@ Every list entry contains:
 
 ## Room behavior
 
-- Creating a party generates a unique room ID in a shareable `?room=...` URL.
+- Creating a party generates a unique room code for the host to copy and share.
+- Entering a room code from **Join party** navigates to the corresponding `?room=...` URL.
 - Guests do not need accounts to join an existing room.
 - Active lobby and swiping rooms expire after 24 hours without a heartbeat. Completed rooms expire after two hours.
 - Anyone in the lobby can start when at least two people are connected.
