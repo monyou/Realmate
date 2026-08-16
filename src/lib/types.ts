@@ -1,3 +1,81 @@
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+
+export type Database = {
+	public: {
+		Tables: {
+			movie_list_shares: {
+				Row: {
+					created_at: string;
+					list_id: string;
+					user_id: string;
+				};
+				Insert: {
+					created_at?: string;
+					list_id: string;
+					user_id: string;
+				};
+				Update: {
+					created_at?: string;
+					list_id?: string;
+					user_id?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: 'movie_list_shares_list_id_fkey';
+						columns: ['list_id'];
+						isOneToOne: false;
+						referencedRelation: 'movie_lists';
+						referencedColumns: ['id'];
+					}
+				];
+			};
+			movie_lists: {
+				Row: {
+					created_at: string;
+					description: string;
+					id: string;
+					items: Json;
+					name: string;
+					updated_at: string;
+					user_id: string;
+				};
+				Insert: {
+					created_at?: string;
+					description?: string;
+					id?: string;
+					items: Json;
+					name: string;
+					updated_at?: string;
+					user_id: string;
+				};
+				Update: {
+					created_at?: string;
+					description?: string;
+					id?: string;
+					items?: Json;
+					name?: string;
+					updated_at?: string;
+					user_id?: string;
+				};
+				Relationships: [];
+			};
+		};
+		Views: Record<string, never>;
+		Functions: {
+			get_movie_list_share_emails: {
+				Args: { target_list_id: string };
+				Returns: { email: string }[];
+			};
+			sync_movie_list_shares: {
+				Args: { recipient_emails: string[]; target_list_id: string };
+				Returns: { email: string }[];
+			};
+		};
+		Enums: Record<string, never>;
+		CompositeTypes: Record<string, never>;
+	};
+};
+
 export type MediaKind = 'movie' | 'series';
 
 export type MediaItem = {
