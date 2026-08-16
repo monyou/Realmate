@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { resolve } from '$app/paths';
+	import GenreCombobox from '$lib/components/GenreCombobox.svelte';
 	import ReelmateLogo from '$lib/components/ReelmateLogo.svelte';
+	import { MEDIA_GENRES, validateGenreInput } from '$lib/media-genres';
 
 	type DraftItem = {
 		key: string;
@@ -98,11 +100,18 @@
 	let items = $state<DraftItem[]>(restoreItems());
 	let showListErrors = $state(false);
 
-	const hasGenres = (item: DraftItem) =>
-		item.genres
-			.split(',')
-			.map((genre) => genre.trim())
-			.some(Boolean);
+	const genreValidation = (item: DraftItem) => validateGenreInput(item.genres);
+	const hasValidGenres = (item: DraftItem) => genreValidation(item).valid;
+	const genreError = (item: DraftItem) => genreValidation(item).message;
+	const normalizedGenres = (item: DraftItem) => {
+		const validation = genreValidation(item);
+		return validation.valid
+			? validation.genres
+			: item.genres
+					.split(',')
+					.map((genre) => genre.trim())
+					.filter(Boolean);
+	};
 	const hasValidYear = (item: DraftItem) =>
 		Number.isInteger(item.year) && Number(item.year) >= 1888 && Number(item.year) <= 2100;
 	const hasValidRating = (item: DraftItem) =>
@@ -121,7 +130,7 @@
 		Boolean(
 			item.title.trim() &&
 			item.type &&
-			hasGenres(item) &&
+			hasValidGenres(item) &&
 			hasValidYear(item) &&
 			hasValidPoster(item) &&
 			hasValidRating(item)
@@ -141,10 +150,7 @@
 			items.map((item) => ({
 				title: item.title.trim(),
 				type: item.type,
-				genres: item.genres
-					.split(',')
-					.map((genre) => genre.trim())
-					.filter(Boolean),
+				genres: normalizedGenres(item),
 				img: item.img.trim(),
 				year: item.year,
 				imdbRating: item.imdbRating ?? 0
@@ -272,7 +278,7 @@
 				{#each items as item, index (item.key)}
 					<details
 						bind:open={item.expanded}
-						class="group overflow-hidden rounded-[26px] border border-white/9 bg-[linear-gradient(145deg,rgba(29,25,39,.92),rgba(15,13,20,.97))] shadow-[0_18px_55px_rgba(0,0,0,.22)]"
+						class="group relative overflow-visible rounded-[26px] border border-white/9 bg-[linear-gradient(145deg,rgba(29,25,39,.92),rgba(15,13,20,.97))] shadow-[0_18px_55px_rgba(0,0,0,.22)] open:z-20"
 					>
 						<summary
 							class="flex cursor-pointer list-none items-center justify-between gap-4 p-5 select-none marker:hidden min-[700px]:px-7 min-[700px]:py-6 [&::-webkit-details-marker]:hidden"
@@ -367,28 +373,28 @@
 								<div>
 									<label for={`genres-${item.key}`} class="mb-2 block text-xs font-bold"
 										>Genres <span class="text-(--rose)">*</span></label
-									><input
+									>
+									<GenreCombobox
 										id={`genres-${item.key}`}
 										bind:value={item.genres}
-										required
-										placeholder="Drama, Sci-Fi"
-										aria-invalid={item.showErrors && !hasGenres(item)}
-										aria-describedby={`genres-help-${item.key}${item.showErrors && !hasGenres(item) ? ` genres-error-${item.key}` : ''}`}
-										class="box-border w-full rounded-xl border bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-[#68616f] focus:border-(--purple) {hasGenres(
-											item
-										) || !item.showErrors
-											? 'border-white/12'
-											: 'border-[#ff5c74]/60'}"
-									/><small
+										invalid={item.showErrors && !hasValidGenres(item)}
+										describedBy={`genres-help-${item.key}${item.showErrors && !hasValidGenres(item) ? ` genres-error-${item.key}` : ''}`}
+									/>
+									<small
 										id={`genres-help-${item.key}`}
 										class="mt-1.5 block text-[10px] text-(--muted)"
-										>Separate genres with commas.</small
+										>Enter 1–3 genres separated with commas.</small
 									>
-									{#if item.showErrors && !hasGenres(item)}<small
+									{#if item.showErrors && !hasValidGenres(item)}<small
 											id={`genres-error-${item.key}`}
-											class="mt-1 block text-[10px] text-[#ff8ca0]"
-											>At least one genre is required.</small
+											class="mt-1 block text-[10px] text-[#ff8ca0]">{genreError(item)}</small
 										>{/if}
+									<details class="mt-2 text-[10px] text-(--muted)">
+										<summary class="cursor-pointer font-bold text-[#c9c2d4]"
+											>Available genres</summary
+										>
+										<p class="mt-1.5 leading-relaxed">{MEDIA_GENRES.join(', ')}</p>
+									</details>
 								</div>
 								<div>
 									<label for={`year-${item.key}`} class="mb-2 block text-xs font-bold"
@@ -475,7 +481,6 @@
 					</details>
 				{/each}
 			</div>
-
 			<button
 				type="button"
 				onclick={() => (items = [...items, emptyItem()])}

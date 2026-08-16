@@ -86,12 +86,15 @@ describe('PartyEngine', () => {
 	it.each([
 		['title', { ...items[0], title: 42 }, 'must be a non-empty string'],
 		['type', { ...items[0], type: 'documentary' }, 'must be either "movie" or "series"'],
-		['genres', { ...items[0], genres: 'Drama' }, 'must be a non-empty array of strings'],
+		['genres', { ...items[0], genres: 'Drama' }, 'At least one genre is required'],
+		['genres entry', { ...items[0], genres: ['Drama', 7] }, 'Every genre must be a name'],
 		[
-			'genres entry',
-			{ ...items[0], genres: ['Drama', 7] },
-			'genres[1]" must be a non-empty string'
+			'too many genres',
+			{ ...items[0], genres: ['Action', 'Adventure', 'Drama', 'Thriller'] },
+			'no more than 3 genres'
 		],
+		['unknown genre', { ...items[0], genres: ['Drama', 'Superhero'] }, 'Unknown genre: Superhero'],
+		['duplicate genre', { ...items[0], genres: ['Drama', 'drama'] }, 'duplicate genre “Drama”'],
 		['img', { ...items[0], img: null }, 'must be a string when provided'],
 		['year', { ...items[0], year: '2026' }, 'must be an integer'],
 		['imdbRating', { ...items[0], imdbRating: 11 }, 'must be a number from 0 to 10']

@@ -65,4 +65,18 @@ describe('validateMovieListForm', () => {
 		if (result.ok) throw new Error('Expected an invalid list');
 		expect(result.message).toContain('0 to 10');
 	});
+
+	it.each([
+		[['Action', 'Adventure', 'Drama', 'Thriller'], 'no more than 3 genres'],
+		[['Drama', 'Superhero'], 'Unknown genre: Superhero'],
+		[['Drama', 'drama'], 'duplicate genre “Drama”']
+	])('rejects invalid genres submitted to the server', (genres, message) => {
+		const result = validateMovieListForm(
+			makeForm([{ title: 'Title', type: 'movie', genres, year: 2020 }])
+		);
+
+		expect(result.ok).toBe(false);
+		if (result.ok) throw new Error('Expected an invalid list');
+		expect(result.message).toContain(message);
+	});
 });
