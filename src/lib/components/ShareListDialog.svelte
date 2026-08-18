@@ -116,7 +116,7 @@
 				</p>
 				<h2 class="mt-1 truncate text-2xl font-extrabold tracking-[-0.04em]">{list?.name ?? ''}</h2>
 				<p class="mt-2 text-xs leading-relaxed text-(--muted)">
-					Friends with an existing Reelmate account can edit this list with you.
+					Friends with an existing Realmate account can edit this list with you.
 				</p>
 			</div>
 			<button

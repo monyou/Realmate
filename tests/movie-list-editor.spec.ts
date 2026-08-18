@@ -16,6 +16,9 @@ describe('MovieListEditor', () => {
 		expect(body).toContain('Available genres');
 		expect(body).toContain('role="combobox"');
 		expect(body).toContain('aria-autocomplete="list"');
+		expect(body).toContain('Plot <span class="font-normal text-(--muted)">(optional)</span>');
+		expect(body).toContain('maxlength="360"');
+		expect(body).toContain('Shown on the back of the swipe card.');
 		expect(body).toMatch(/<details open="" class="[^"]*overflow-visible[^"]*open:z-20/);
 		expect(body).not.toMatch(/<button type="submit" disabled=""[^>]*>Create list/);
 	});
@@ -33,7 +36,9 @@ describe('MovieListEditor', () => {
 						genres: ['Drama', 'Sci-Fi'],
 						img: '',
 						year: 2016,
-						imdbRating: 0
+						imdbRating: 7.6,
+						ratingSource: 'TMDB',
+						plot: 'A linguist attempts to communicate with visitors from another world.'
 					}
 				]
 			}
@@ -43,6 +48,10 @@ describe('MovieListEditor', () => {
 		expect(body).toContain('value="Science fiction"');
 		expect(body).toContain('value="Arrival"');
 		expect(body).toContain('value="Drama, Sci-Fi"');
+		expect(body).toContain('TMDB rating');
+		expect(body).toContain('&quot;ratingSource&quot;:&quot;TMDB&quot;');
+		expect(body).toContain('A linguist attempts to communicate with visitors from another world.');
+		expect(body).toContain('&quot;plot&quot;:');
 		expect(body).not.toContain('<details open=""');
 		expect(body).not.toContain('Title is required.');
 		expect(body).not.toMatch(/<button type="submit" disabled=""[^>]*>Save changes/);

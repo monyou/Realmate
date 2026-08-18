@@ -5,8 +5,9 @@
 	import type { SubmitFunction } from '@sveltejs/kit';
 	import GenreCombobox from '$lib/components/GenreCombobox.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
-	import ReelmateLogo from '$lib/components/ReelmateLogo.svelte';
+	import RealmateLogo from '$lib/components/RealmateLogo.svelte';
 	import { MEDIA_GENRES, validateGenreInput } from '$lib/media-genres';
+	import { MAX_MEDIA_PLOT_LENGTH } from '$lib/media-plot';
 
 	type DraftItem = {
 		key: string;
@@ -16,6 +17,8 @@
 		img: string;
 		year: number | undefined;
 		imdbRating: number | undefined;
+		ratingSource: 'IMDb' | 'TMDB';
+		plot: string;
 		expanded: boolean;
 		showErrors: boolean;
 	};
@@ -58,6 +61,8 @@
 		img: '',
 		year: undefined,
 		imdbRating: undefined,
+		ratingSource: 'IMDb',
+		plot: '',
 		expanded,
 		showErrors: false
 	});
@@ -78,6 +83,8 @@
 			year: typeof item.year === 'number' ? item.year : undefined,
 			imdbRating:
 				typeof item.imdbRating === 'number' && item.imdbRating > 0 ? item.imdbRating : undefined,
+			ratingSource: item.ratingSource === 'TMDB' ? 'TMDB' : 'IMDb',
+			plot: typeof item.plot === 'string' ? item.plot : '',
 			expanded: mode === 'create',
 			showErrors: false
 		};
@@ -121,6 +128,7 @@
 	const hasValidRating = (item: DraftItem) =>
 		item.imdbRating === undefined ||
 		(Number.isFinite(item.imdbRating) && item.imdbRating >= 0 && item.imdbRating <= 10);
+	const hasValidPlot = (item: DraftItem) => item.plot.length <= MAX_MEDIA_PLOT_LENGTH;
 	const hasValidPoster = (item: DraftItem) => {
 		if (!item.img.trim()) return true;
 		try {
@@ -137,7 +145,8 @@
 			hasValidGenres(item) &&
 			hasValidYear(item) &&
 			hasValidPoster(item) &&
-			hasValidRating(item)
+			hasValidRating(item) &&
+			hasValidPlot(item)
 		);
 	const hasValidListName = () => Boolean(listName.trim() && listName.length <= 80);
 	const hasValidDescription = () => description.length <= 500;
@@ -157,7 +166,9 @@
 				genres: normalizedGenres(item),
 				img: item.img.trim(),
 				year: item.year,
-				imdbRating: item.imdbRating ?? 0
+				imdbRating: item.imdbRating ?? 0,
+				plot: item.plot.trim(),
+				...(item.ratingSource === 'TMDB' ? { ratingSource: 'TMDB' as const } : {})
 			}))
 		)
 	);
@@ -193,12 +204,12 @@
 </script>
 
 <svelte:head>
-	<title>{mode === 'create' ? 'New watch list' : 'Edit watch list'} — Reelmate</title>
+	<title>{mode === 'create' ? 'New watch list' : 'Edit watch list'} — Realmate</title>
 	<meta
 		name="description"
 		content={mode === 'create'
-			? 'Create a movie and series list for your next Reelmate party.'
-			: 'Edit a saved Reelmate movie and series list.'}
+			? 'Create a movie and series list for your next Realmate party.'
+			: 'Edit a saved Realmate movie and series list.'}
 	/>
 </svelte:head>
 
@@ -208,7 +219,7 @@
 	></div>
 	<header class="border-b border-white/7 px-5 py-5">
 		<div class="mx-auto flex w-[min(100%,1000px)] items-center justify-between">
-			<ReelmateLogo /><a
+			<RealmateLogo /><a
 				href={resolve('/profile')}
 				class="text-xs font-bold text-(--muted) no-underline hover:text-white">← Back to lists</a
 			>
@@ -464,7 +475,8 @@
 								</div>
 								<div>
 									<label for={`rating-${item.key}`} class="mb-2 block text-xs font-bold"
-										>IMDb rating <span class="font-normal text-(--muted)">(optional)</span></label
+										>{item.ratingSource} rating
+										<span class="font-normal text-(--muted)">(optional)</span></label
 									><input
 										id={`rating-${item.key}`}
 										type="number"
@@ -486,7 +498,39 @@
 									{#if item.showErrors && !hasValidRating(item)}<small
 											id={`rating-error-${item.key}`}
 											class="mt-1.5 block text-[10px] text-[#ff8ca0]"
-											>IMDb rating must be between 0 and 10.</small
+											>{item.ratingSource} rating must be between 0 and 10.</small
+										>{/if}
+								</div>
+								<div class="min-[700px]:col-span-2">
+									<div class="mb-2 flex items-center justify-between gap-4">
+										<label for={`plot-${item.key}`} class="text-xs font-bold"
+											>Plot <span class="font-normal text-(--muted)">(optional)</span></label
+										>
+										<small class={hasValidPlot(item) ? 'text-(--muted)' : 'text-[#ff8ca0]'}
+											>{item.plot.length}/{MAX_MEDIA_PLOT_LENGTH}</small
+										>
+									</div>
+									<textarea
+										id={`plot-${item.key}`}
+										bind:value={item.plot}
+										maxlength={MAX_MEDIA_PLOT_LENGTH}
+										rows="5"
+										placeholder="A short, spoiler-free summary of the title…"
+										aria-invalid={item.showErrors && !hasValidPlot(item)}
+										aria-describedby={`plot-help-${item.key}${item.showErrors && !hasValidPlot(item) ? ` plot-error-${item.key}` : ''}`}
+										class="box-border w-full resize-y rounded-xl border bg-black/20 px-4 py-3 text-sm leading-relaxed text-white outline-none placeholder:text-[#68616f] focus:border-(--purple) {item.showErrors &&
+										!hasValidPlot(item)
+											? 'border-[#ff5c74]/60'
+											: 'border-white/12'}"></textarea>
+									<small
+										id={`plot-help-${item.key}`}
+										class="mt-1.5 block text-[10px] text-(--muted)"
+										>Shown on the back of the swipe card.</small
+									>
+									{#if item.showErrors && !hasValidPlot(item)}<small
+											id={`plot-error-${item.key}`}
+											class="mt-1 block text-[10px] text-[#ff8ca0]"
+											>Plot cannot exceed {MAX_MEDIA_PLOT_LENGTH} characters.</small
 										>{/if}
 								</div>
 							</div>

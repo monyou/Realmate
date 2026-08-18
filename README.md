@@ -1,6 +1,6 @@
-# Reelmate
+# Realmate
 
-Reelmate helps a group choose a movie or series together. Account owners build private watch lists, select one or more lists, and open a shareable room. Everyone swipes through the same deck until the first unanimous match.
+Realmate helps a group choose a movie or series together. Account owners build private watch lists, select one or more lists, and open a shareable room. Everyone swipes through the same deck until the first unanimous match.
 
 Built with SvelteKit 2, Svelte 5, TypeScript, Tailwind CSS 4, Supabase Auth/Postgres, Upstash Redis, Vercel, and Bun.
 
@@ -9,6 +9,7 @@ Built with SvelteKit 2, Svelte 5, TypeScript, Tailwind CSS 4, Supabase Auth/Post
 - **Supabase Auth** owns email/password accounts and cookie-based SSR sessions.
 - **Supabase Postgres** stores each user's private movie lists. Row Level Security restricts every list to its owner.
 - **Upstash Redis** stores short-lived live-room state and serializes party mutations.
+- **TMDB discovery** provides metadata and posters for randomly generated lists through authenticated server-side API requests.
 - **SvelteKit server actions** validate list data, enforce authentication, and create rooms.
 - **Supabase Storage is not required yet.** Poster images are stored as external URLs; Storage can be added later for user uploads.
 
@@ -16,11 +17,11 @@ Built with SvelteKit 2, Svelte 5, TypeScript, Tailwind CSS 4, Supabase Auth/Post
 
 1. A visitor lands on the public product page and chooses **Log in** or **Create account**.
 2. After authentication, the visitor reaches `/profile`.
-3. **New list** opens a form where multiple movies or series can be added.
+3. **New list** opens a form where multiple movies or series can be added, while **Generate list** randomly samples matching TMDB results.
 4. The profile shows every saved list with a checkbox.
 5. Selecting one or more lists reveals **Start matching**.
-6. Reelmate combines the selected lists, creates a Redis-backed room, and shows its copyable room code.
-7. Guests can open Reelmate, choose **Join party**, and enter the code without creating an account. At least two connected people are required to start swiping.
+6. Realmate combines the selected lists, creates a Redis-backed room, and shows its copyable room code.
+7. Guests can open Realmate, choose **Join party**, and enter the code without creating an account. At least two connected people are required to start swiping.
 
 ## Local setup
 
@@ -38,7 +39,10 @@ PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_YOUR_KEY
 UPSTASH_REDIS_REST_URL=https://YOUR_DATABASE.upstash.io
 UPSTASH_REDIS_REST_TOKEN=YOUR_REDIS_TOKEN
+TMDB_API_READ_ACCESS_TOKEN=YOUR_TMDB_API_READ_ACCESS_TOKEN
 ```
+
+Use the TMDB **API Read Access Token**, not the shorter API key. It remains server-only and is sent as a bearer token to TMDB.
 
 The Supabase URL and publishable key are available from the project's **Connect** dialog. Do not put a service-role or secret key in a `PUBLIC_` variable.
 
@@ -73,8 +77,11 @@ Open [http://localhost:5173](http://localhost:5173).
 1. Import the repository into Vercel. The project uses the official SvelteKit Vercel adapter and Node.js 22.
 2. Add the two public Supabase variables to every required Vercel environment.
 3. Connect an Upstash Redis database and add its REST URL and token.
-4. Add the production `/auth/callback` URL to Supabase's redirect allow list.
-5. Deploy or redeploy so the functions receive the updated variables.
+4. Add `TMDB_API_READ_ACCESS_TOKEN` as a server-only environment variable.
+5. Add the production `/auth/callback` URL to Supabase's redirect allow list.
+6. Deploy or redeploy so the functions receive the updated variables.
+
+The generator builds one TMDB discover branch per selected media type. Multiple selected genres are combined with AND logic, so every generated title must match all of them. It samples up to three random result pages per branch, merges and deduplicates the candidates, and saves up to the requested limit. If fewer valid titles exist, it saves the partial non-empty result. Genres that TMDB does not expose as native discover genres use TMDB keyword search as a fallback. It does not require an AI API key.
 
 The app deliberately has no in-memory fallback. Both local development and production use Redis for rooms.
 
@@ -89,18 +96,22 @@ Every list entry contains:
 	"genres": ["Drama", "Sci-Fi"],
 	"img": "https://example.com/poster.jpg",
 	"year": 2024,
-	"imdbRating": 8.5
+	"imdbRating": 8.5,
+	"ratingSource": "TMDB",
+	"plot": "Paul Atreides unites with Chani and the Fremen while seeking revenge for his family."
 }
 ```
 
 - `type` must be `movie` or `series`.
-- `genres` must contain 1–3 unique IMDb genres. In the editor, enter them separated by commas.
-- Accepted genres are: Action, Adult, Adventure, Animation, Biography, Comedy, Crime,
+- `genres` must contain 1–3 unique supported genres. In the editor, enter them separated by commas.
+- Accepted genres are: Action, Adventure, Animation, Biography, Comedy, Crime,
   Documentary, Drama, Family, Fantasy, Film-Noir, Game-Show, History, Horror, Music, Musical,
   Mystery, News, Reality-TV, Romance, Sci-Fi, Short, Sport, Talk-Show, Thriller, War, and Western.
 - `year` must be an integer from `1888` to `2100`.
 - `img` is optional. When omitted, the bundled default poster is shown.
 - `imdbRating` is optional. When omitted or set to `0`, the rating is shown as unknown.
+- `ratingSource` is optional and may be `IMDb` or `TMDB`; older/manual entries default to IMDb in the UI.
+- `plot` is optional and limited to 360 characters. Clicking or pressing Enter on a swipe card flips it to show the plot. TMDB-generated entries use the discover result's overview when available.
 - A list can contain up to 500 titles.
 - The complete list is rejected if any entry is invalid.
 

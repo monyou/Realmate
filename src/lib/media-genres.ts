@@ -1,6 +1,5 @@
 export const MEDIA_GENRES = [
 	'Action',
-	'Adult',
 	'Adventure',
 	'Animation',
 	'Biography',

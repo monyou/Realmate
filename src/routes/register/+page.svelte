@@ -10,7 +10,7 @@
 		registrationPasswordValidationMessage
 	} from '$lib/auth-validation';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
-	import ReelmateLogo from '$lib/components/ReelmateLogo.svelte';
+	import RealmateLogo from '$lib/components/RealmateLogo.svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	const restoreEmail = () => form?.email ?? '';
@@ -52,8 +52,8 @@
 </script>
 
 <svelte:head>
-	<title>Create an account — Reelmate</title>
-	<meta name="description" content="Create your Reelmate account and start building watch lists." />
+	<title>Create an account — Realmate</title>
+	<meta name="description" content="Create your Realmate account and start building watch lists." />
 </svelte:head>
 
 <div class="relative isolate min-h-dvh overflow-hidden bg-[#0b0910] px-5 py-7 text-(--ink)">
@@ -65,7 +65,7 @@
 	></div>
 
 	<header class="mx-auto flex w-[min(100%,1120px)] items-center">
-		<ReelmateLogo />
+		<RealmateLogo />
 	</header>
 
 	<main

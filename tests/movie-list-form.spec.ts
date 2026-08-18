@@ -31,9 +31,27 @@ describe('validateMovieListForm', () => {
 				genres: ['Drama', 'Sci-Fi'],
 				year: 2016,
 				img: '',
-				imdbRating: 0
+				imdbRating: 0,
+				plot: ''
 			}
 		]);
+	});
+
+	it('accepts a readable optional plot and rejects one longer than 360 characters', () => {
+		const item = {
+			title: 'Arrival',
+			type: 'movie',
+			genres: ['Drama', 'Sci-Fi'],
+			year: 2016,
+			plot: 'A linguist works with the military to communicate with mysterious visitors.'
+		};
+		const valid = validateMovieListForm(makeForm([item]));
+		expect(valid.ok).toBe(true);
+
+		const invalid = validateMovieListForm(makeForm([{ ...item, plot: 'x'.repeat(361) }]));
+		expect(invalid.ok).toBe(false);
+		if (invalid.ok) throw new Error('Expected an invalid list');
+		expect(invalid.message).toContain('plot" cannot exceed 360 characters');
 	});
 
 	it.each([

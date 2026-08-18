@@ -4,8 +4,9 @@
 	import type { SubmitFunction } from '@sveltejs/kit';
 	import { resolve } from '$app/paths';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
-	import ReelmateLogo from '$lib/components/ReelmateLogo.svelte';
+	import RealmateLogo from '$lib/components/RealmateLogo.svelte';
 	import ShareListDialog from '$lib/components/ShareListDialog.svelte';
+	import { selectionAfterDelete } from '$lib/list-selection';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	let selected = $state<string[]>([]);
@@ -16,13 +17,18 @@
 	let submitting = $state(false);
 	let loadingLabel = $state('Working on it…');
 
-	const handleSubmit: SubmitFunction = ({ formElement }) => {
+	const handleSubmit: SubmitFunction = ({ formElement, formData }) => {
 		loadingLabel = formElement.dataset.loadingLabel ?? 'Working on it…';
 		const closeDialogOnSuccess = formElement.dataset.closeDialogOnSuccess === 'true';
+		const removeSelectionOnSuccess = formElement.dataset.removeSelectionOnSuccess === 'true';
+		const submittedListId = removeSelectionOnSuccess ? String(formData.get('listId') ?? '') : '';
 		submitting = true;
 		return async ({ result, update }) => {
 			try {
-				if (closeDialogOnSuccess && result.type === 'success') cancelDelete();
+				if (result.type === 'success') {
+					selected = selectionAfterDelete(selected, submittedListId, removeSelectionOnSuccess);
+					if (closeDialogOnSuccess) cancelDelete();
+				}
 				await update();
 			} finally {
 				submitting = false;
@@ -50,8 +56,8 @@
 </script>
 
 <svelte:head>
-	<title>Your lists — Reelmate</title>
-	<meta name="description" content="Manage your Reelmate movie and series lists." />
+	<title>Your lists — Realmate</title>
+	<meta name="description" content="Manage your Realmate movie and series lists." />
 </svelte:head>
 
 <svelte:window
@@ -71,7 +77,7 @@
 
 	<header class="border-b border-white/7 px-5 py-5 backdrop-blur-xl">
 		<div class="mx-auto flex w-[min(100%,1120px)] items-center justify-between gap-4">
-			<ReelmateLogo />
+			<RealmateLogo />
 			<div class="flex items-center gap-3">
 				<span class="hidden max-w-56 truncate text-xs text-(--muted) min-[600px]:block"
 					>{data.user.email}</span
@@ -105,11 +111,18 @@
 					matching room.
 				</p>
 			</div>
-			<a
-				href={resolve('/profile/lists/new')}
-				class="inline-flex items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-3.5 text-sm font-extrabold text-[#160b10] no-underline shadow-[0_12px_28px_rgba(255,63,102,.2)] transition hover:-translate-y-0.5"
-				><span class="text-lg">+</span> New list</a
-			>
+			<div class="flex flex-col gap-3 min-[430px]:flex-row">
+				<a
+					href={resolve('/profile/lists/generate')}
+					class="inline-flex items-center justify-center gap-2 rounded-2xl border border-(--purple)/35 bg-(--purple)/10 px-5 py-3.5 text-sm font-extrabold text-[#c8beff] no-underline shadow-[0_12px_28px_rgba(124,92,255,.1)] transition hover:-translate-y-0.5 hover:border-(--purple)/60 hover:bg-(--purple)/16"
+					><span class="text-base" aria-hidden="true">✦</span> Generate list</a
+				>
+				<a
+					href={resolve('/profile/lists/new')}
+					class="inline-flex items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-3.5 text-sm font-extrabold text-[#160b10] no-underline shadow-[0_12px_28px_rgba(255,63,102,.2)] transition hover:-translate-y-0.5"
+					><span class="text-lg">+</span> New list</a
+				>
+			</div>
 		</div>
 
 		{#if data.loadError}<p
@@ -354,6 +367,7 @@
 				class="mt-6 flex justify-end gap-3"
 				data-loading-label="Deleting your list…"
 				data-close-dialog-on-success="true"
+				data-remove-selection-on-success="true"
 				use:enhance={handleSubmit}
 			>
 				<input type="hidden" name="listId" value={deleteTarget?.id ?? ''} />
