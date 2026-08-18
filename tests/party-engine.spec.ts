@@ -97,7 +97,12 @@ describe('PartyEngine', () => {
 		['duplicate genre', { ...items[0], genres: ['Drama', 'drama'] }, 'duplicate genre “Drama”'],
 		['img', { ...items[0], img: null }, 'must be a string when provided'],
 		['year', { ...items[0], year: '2026' }, 'must be an integer'],
-		['imdbRating', { ...items[0], imdbRating: 11 }, 'must be a number from 0 to 10']
+		['imdbRating', { ...items[0], imdbRating: 11 }, 'must be a number from 0 to 10'],
+		[
+			'ratingSource',
+			{ ...items[0], ratingSource: 'Rotten Tomatoes' },
+			'must be either "IMDb" or "TMDB"'
+		]
 	])('rejects an invalid %s field', (_field, item, expected) => {
 		expect(() => new PartyEngine([item] as Omit<MediaItem, 'id'>[])).toThrow(expected);
 	});

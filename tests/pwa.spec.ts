@@ -24,11 +24,11 @@ describe('PWA configuration', () => {
 		};
 
 		expect(manifest).toMatchObject({
-			short_name: 'Reelmate',
+			short_name: 'Realmate',
 			start_url: '/',
 			display: 'standalone'
 		});
-		expect(manifest.name).toContain('Reelmate');
+		expect(manifest.name).toContain('Realmate');
 		expect(manifest.icons.some((icon) => icon.sizes === '192x192')).toBe(true);
 		expect(manifest.icons.some((icon) => icon.sizes === '512x512')).toBe(true);
 		expect(manifest.icons.some((icon) => icon.purpose === 'maskable')).toBe(true);
@@ -54,7 +54,7 @@ describe('PWA configuration', () => {
 		expect(appHtml).toContain('name="theme-color"');
 		expect(appHtml).toContain('rel="apple-touch-icon"');
 		expect(offlineHtml).toContain('You’re offline');
-		expect(offlineHtml).toContain('Reelmate needs a connection');
+		expect(offlineHtml).toContain('Realmate needs a connection');
 	});
 
 	it('keeps authenticated navigation network-first and only precaches static assets', () => {

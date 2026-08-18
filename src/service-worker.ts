@@ -6,7 +6,7 @@
 import { base, build, files, version } from '$service-worker';
 
 const worker = globalThis as unknown as ServiceWorkerGlobalScope;
-const cacheName = `reelmate-${version}`;
+const cacheName = `realmate-${version}`;
 const assets = [...build, ...files];
 const offlinePage = `${base}/offline.html`;
 
@@ -18,7 +18,7 @@ worker.addEventListener('activate', (event) => {
 	event.waitUntil(
 		(async () => {
 			for (const key of await caches.keys()) {
-				if (key.startsWith('reelmate-') && key !== cacheName) await caches.delete(key);
+				if (key !== cacheName) await caches.delete(key);
 			}
 			await worker.clients.claim();
 		})()

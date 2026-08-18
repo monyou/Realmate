@@ -6,7 +6,7 @@
 	import { resolve } from '$app/paths';
 	import { emailValidationMessage, loginPasswordValidationMessage } from '$lib/auth-validation';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
-	import ReelmateLogo from '$lib/components/ReelmateLogo.svelte';
+	import RealmateLogo from '$lib/components/RealmateLogo.svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	const restoreEmail = () => form?.email ?? '';
@@ -40,8 +40,8 @@
 </script>
 
 <svelte:head>
-	<title>Log in — Reelmate</title>
-	<meta name="description" content="Log in to manage your Reelmate watch lists." />
+	<title>Log in — Realmate</title>
+	<meta name="description" content="Log in to manage your Realmate watch lists." />
 </svelte:head>
 
 <div class="relative isolate min-h-dvh overflow-hidden bg-[#0b0910] px-5 py-7 text-(--ink)">
@@ -53,7 +53,7 @@
 	></div>
 
 	<header class="mx-auto flex w-[min(100%,1120px)] items-center">
-		<ReelmateLogo />
+		<RealmateLogo />
 	</header>
 
 	<main
@@ -142,7 +142,7 @@
 					type="submit"
 					class="mt-2 flex w-full cursor-pointer items-center justify-between rounded-2xl border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-4 font-extrabold text-[#160b10] shadow-[0_14px_34px_rgba(255,63,102,.24)] transition hover:-translate-y-0.5"
 				>
-					<span>Log in to Reelmate</span><span aria-hidden="true">→</span>
+					<span>Log in to Realmate</span><span aria-hidden="true">→</span>
 				</button>
 			</form>
 

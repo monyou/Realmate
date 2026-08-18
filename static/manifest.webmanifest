@@ -1,7 +1,7 @@
 {
 	"id": "/",
-	"name": "Reelmate — Find what to watch together",
-	"short_name": "Reelmate",
+	"name": "Realmate — Find what to watch together",
+	"short_name": "Realmate",
 	"description": "Build shared watch lists and swipe together to find the movie or series everyone wants to watch.",
 	"start_url": "/",
 	"scope": "/",

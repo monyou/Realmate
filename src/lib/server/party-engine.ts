@@ -20,7 +20,12 @@ type SourceMediaItem = Omit<MediaItem, 'id' | 'img' | 'imdbRating'> &
 	Partial<Pick<MediaItem, 'img' | 'imdbRating'>> & { id?: string };
 
 const requiredMediaFields = ['title', 'type', 'genres', 'year'] as const;
-const allowedMediaFields = new Set<string>([...requiredMediaFields, 'img', 'imdbRating']);
+const allowedMediaFields = new Set<string>([
+	...requiredMediaFields,
+	'img',
+	'imdbRating',
+	'ratingSource'
+]);
 const invalidMedia = (message: string) => new Error(`${message} Check the list and try again.`);
 
 export type PersistedPartyEngine = {
@@ -188,6 +193,13 @@ export class PartyEngine {
 					item.imdbRating > 10)
 			) {
 				throw invalidMedia(`${label} field "imdbRating" must be a number from 0 to 10.`);
+			}
+			if (
+				item.ratingSource !== undefined &&
+				item.ratingSource !== 'IMDb' &&
+				item.ratingSource !== 'TMDB'
+			) {
+				throw invalidMedia(`${label} field "ratingSource" must be either "IMDb" or "TMDB".`);
 			}
 			if (item.id !== undefined && (typeof item.id !== 'string' || item.id.trim().length === 0)) {
 				throw invalidMedia(`${label} field "id" must be a non-empty string when provided.`);

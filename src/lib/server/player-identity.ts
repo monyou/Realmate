@@ -1,6 +1,6 @@
 import type { Cookies } from '@sveltejs/kit';
 
-const playerCookie = 'reelmate-player';
+const playerCookie = 'realmate-player';
 
 export const getPlayerIdentity = (cookies: Cookies, secure: boolean) => {
 	let playerId = cookies.get(playerCookie);

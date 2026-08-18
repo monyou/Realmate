@@ -86,6 +86,7 @@ export type MediaItem = {
 	img: string;
 	year: number;
 	imdbRating: number;
+	ratingSource?: 'IMDb' | 'TMDB';
 };
 
 export type SourceMedia = Omit<MediaItem, 'id'>[];

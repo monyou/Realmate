@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { assets, resolve } from '$app/paths';
 	import Confetti from '$lib/components/Confetti.svelte';
-	import ReelmateLogo from '$lib/components/ReelmateLogo.svelte';
+	import RealmateLogo from '$lib/components/RealmateLogo.svelte';
 	import { normalizeRoomCode, partyRoomPath } from '$lib/party-room';
 	import type { MediaItem, PartyState } from '$lib/types';
 	import type { PageData } from './$types';
@@ -87,10 +87,10 @@
 	});
 
 	onMount(() => {
-		const guestSeed = localStorage.getItem('reelmate-guest-seed') ?? crypto.randomUUID();
-		localStorage.setItem('reelmate-guest-seed', guestSeed);
-		playerName = localStorage.getItem('reelmate-player-name') ?? makeGuestName(guestSeed);
-		localStorage.setItem('reelmate-player-name', playerName);
+		const guestSeed = localStorage.getItem('realmate-guest-seed') ?? crypto.randomUUID();
+		localStorage.setItem('realmate-guest-seed', guestSeed);
+		playerName = localStorage.getItem('realmate-player-name') ?? makeGuestName(guestSeed);
+		localStorage.setItem('realmate-player-name', playerName);
 		let stopped = false;
 		roomCode = roomId;
 		pageReady = true;
@@ -297,9 +297,10 @@
 	}
 
 	function ratingAriaLabel(item: MediaItem) {
+		const source = item.ratingSource ?? 'IMDb';
 		return item.imdbRating > 0
-			? `IMDb rating ${ratingLabel(item)} out of 10`
-			: 'IMDb rating unknown';
+			? `${source} rating ${ratingLabel(item)} out of 10`
+			: `${source} rating unknown`;
 	}
 
 	function posterSource(item: MediaItem) {
@@ -313,7 +314,7 @@
 </script>
 
 <svelte:head>
-	<title>Reelmate — Find tonight’s watch</title>
+	<title>Realmate — Find tonight’s watch</title>
 	<meta
 		name="description"
 		content="Swipe together, match on a movie or series, and stop debating what to watch."
@@ -344,7 +345,7 @@
 	<header
 		class="relative z-40 mx-auto flex w-[min(100%,1120px)] items-center justify-between px-5.5 pt-[max(20px,env(safe-area-inset-top))] pb-2 max-[380px]:px-4 min-[720px]:pt-7 [@media(max-height:760px)_and_(max-width:600px)]:pt-[max(14px,env(safe-area-inset-top))]"
 	>
-		<ReelmateLogo />
+		<RealmateLogo />
 
 		{#if roomId && !roomMissing}
 			<div
@@ -368,7 +369,7 @@
 				<div
 					class="relative size-15.5 animate-[reel-spin_1.8s_linear_infinite] rounded-full border-2 border-white/15 border-t-(--rose) before:absolute before:top-2.5 before:left-2.5 before:size-3 before:rounded-full before:bg-white/12 before:content-[''] after:absolute after:top-2.5 after:right-2.5 after:size-3 after:rounded-full after:bg-white/12 after:content-['']"
 				></div>
-				<p>Loading Reelmate…</p>
+				<p>Loading Realmate…</p>
 			</section>
 		{:else if !roomId}
 			<section
@@ -385,7 +386,7 @@
 					Stop debating.<br /><em>Start matching.</em>
 				</h1>
 				<p class="mx-auto mt-6 max-w-155 text-[15px] leading-[1.7] text-(--muted)">
-					Save your movie and series lists, invite your people, and swipe together. Reelmate reveals
+					Save your movie and series lists, invite your people, and swipe together. Realmate reveals
 					the first title everyone wants to watch.
 				</p>
 
@@ -749,7 +750,7 @@
 											>
 											<small
 												class="ml-px text-[7px] font-[850] tracking-widest text-[#b7ad8a] uppercase"
-												>IMDb</small
+												>{currentItem.ratingSource ?? 'IMDb'}</small
 											>
 										</div>
 									</div>
@@ -1049,7 +1050,7 @@
 	<footer
 		class="relative z-2 flex items-center justify-center gap-2.5 px-5 pt-2 pb-[max(18px,env(safe-area-inset-bottom))] text-[9px] tracking-[0.04em] text-[#514b57]"
 	>
-		<span class="font-extrabold">reelmate</span>
+		<span class="font-extrabold">realmate</span>
 		<i class="size-0.75 rounded-full bg-[#514b57]"></i>
 		<p class="m-0">Less browsing. More watching.</p>
 	</footer>

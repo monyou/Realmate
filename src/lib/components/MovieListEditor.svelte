@@ -5,7 +5,7 @@
 	import type { SubmitFunction } from '@sveltejs/kit';
 	import GenreCombobox from '$lib/components/GenreCombobox.svelte';
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
-	import ReelmateLogo from '$lib/components/ReelmateLogo.svelte';
+	import RealmateLogo from '$lib/components/RealmateLogo.svelte';
 	import { MEDIA_GENRES, validateGenreInput } from '$lib/media-genres';
 
 	type DraftItem = {
@@ -16,6 +16,7 @@
 		img: string;
 		year: number | undefined;
 		imdbRating: number | undefined;
+		ratingSource: 'IMDb' | 'TMDB';
 		expanded: boolean;
 		showErrors: boolean;
 	};
@@ -58,6 +59,7 @@
 		img: '',
 		year: undefined,
 		imdbRating: undefined,
+		ratingSource: 'IMDb',
 		expanded,
 		showErrors: false
 	});
@@ -78,6 +80,7 @@
 			year: typeof item.year === 'number' ? item.year : undefined,
 			imdbRating:
 				typeof item.imdbRating === 'number' && item.imdbRating > 0 ? item.imdbRating : undefined,
+			ratingSource: item.ratingSource === 'TMDB' ? 'TMDB' : 'IMDb',
 			expanded: mode === 'create',
 			showErrors: false
 		};
@@ -157,7 +160,8 @@
 				genres: normalizedGenres(item),
 				img: item.img.trim(),
 				year: item.year,
-				imdbRating: item.imdbRating ?? 0
+				imdbRating: item.imdbRating ?? 0,
+				...(item.ratingSource === 'TMDB' ? { ratingSource: 'TMDB' as const } : {})
 			}))
 		)
 	);
@@ -193,12 +197,12 @@
 </script>
 
 <svelte:head>
-	<title>{mode === 'create' ? 'New watch list' : 'Edit watch list'} — Reelmate</title>
+	<title>{mode === 'create' ? 'New watch list' : 'Edit watch list'} — Realmate</title>
 	<meta
 		name="description"
 		content={mode === 'create'
-			? 'Create a movie and series list for your next Reelmate party.'
-			: 'Edit a saved Reelmate movie and series list.'}
+			? 'Create a movie and series list for your next Realmate party.'
+			: 'Edit a saved Realmate movie and series list.'}
 	/>
 </svelte:head>
 
@@ -208,7 +212,7 @@
 	></div>
 	<header class="border-b border-white/7 px-5 py-5">
 		<div class="mx-auto flex w-[min(100%,1000px)] items-center justify-between">
-			<ReelmateLogo /><a
+			<RealmateLogo /><a
 				href={resolve('/profile')}
 				class="text-xs font-bold text-(--muted) no-underline hover:text-white">← Back to lists</a
 			>
@@ -464,7 +468,8 @@
 								</div>
 								<div>
 									<label for={`rating-${item.key}`} class="mb-2 block text-xs font-bold"
-										>IMDb rating <span class="font-normal text-(--muted)">(optional)</span></label
+										>{item.ratingSource} rating
+										<span class="font-normal text-(--muted)">(optional)</span></label
 									><input
 										id={`rating-${item.key}`}
 										type="number"
@@ -486,7 +491,7 @@
 									{#if item.showErrors && !hasValidRating(item)}<small
 											id={`rating-error-${item.key}`}
 											class="mt-1.5 block text-[10px] text-[#ff8ca0]"
-											>IMDb rating must be between 0 and 10.</small
+											>{item.ratingSource} rating must be between 0 and 10.</small
 										>{/if}
 								</div>
 							</div>

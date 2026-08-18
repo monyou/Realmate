@@ -33,7 +33,8 @@ describe('MovieListEditor', () => {
 						genres: ['Drama', 'Sci-Fi'],
 						img: '',
 						year: 2016,
-						imdbRating: 0
+						imdbRating: 7.6,
+						ratingSource: 'TMDB'
 					}
 				]
 			}
@@ -43,6 +44,8 @@ describe('MovieListEditor', () => {
 		expect(body).toContain('value="Science fiction"');
 		expect(body).toContain('value="Arrival"');
 		expect(body).toContain('value="Drama, Sci-Fi"');
+		expect(body).toContain('TMDB rating');
+		expect(body).toContain('&quot;ratingSource&quot;:&quot;TMDB&quot;');
 		expect(body).not.toContain('<details open=""');
 		expect(body).not.toContain('Title is required.');
 		expect(body).not.toMatch(/<button type="submit" disabled=""[^>]*>Save changes/);

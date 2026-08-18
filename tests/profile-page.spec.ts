@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'svelte/server';
+import { selectionAfterDelete } from '$lib/list-selection';
 import ProfilePage from '../src/routes/profile/+page.svelte';
 
 describe('profile list table', () => {
@@ -37,6 +38,8 @@ describe('profile list table', () => {
 		const desktopGrid = 'grid-cols-[32px_28px_minmax(0,1fr)_90px_120px_120px]';
 		expect(body.split(desktopGrid)).toHaveLength(4);
 		expect(body).toContain('Last updated');
+		expect(body).toContain('href="/profile/lists/generate"');
+		expect(body).toContain('Generate list');
 		expect(body).toContain('aria-label="Edit Weekend picks"');
 		expect(body).toContain('aria-label="Share Weekend picks"');
 		expect(body).toContain('aria-label="Delete Weekend picks"');
@@ -47,5 +50,16 @@ describe('profile list table', () => {
 		expect(body).not.toContain('aria-label="Share Shared by a friend"');
 		expect(body).not.toContain('aria-label="Delete Shared by a friend"');
 		expect(body).toContain('data-close-dialog-on-success="true"');
+		expect(body).toContain('data-remove-selection-on-success="true"');
+	});
+
+	it('removes a successfully deleted list from matching selection only after success', () => {
+		const selected = ['first-list', 'deleted-list', 'third-list'];
+
+		expect(selectionAfterDelete(selected, 'deleted-list', true)).toEqual([
+			'first-list',
+			'third-list'
+		]);
+		expect(selectionAfterDelete(selected, 'deleted-list', false)).toBe(selected);
 	});
 });
