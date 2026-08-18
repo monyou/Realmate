@@ -7,6 +7,7 @@ import {
 	type GenerationCriteriaValues
 } from '$lib/generated-list';
 import { MEDIA_GENRES, validateMediaGenres, type MediaGenre } from '$lib/media-genres';
+import { truncateMediaPlot } from '$lib/media-plot';
 import { validateMovieListForm } from '$lib/server/movie-list-form';
 import type { Json, MediaKind, SourceMedia } from '$lib/types';
 
@@ -240,6 +241,7 @@ type TmdbResult = {
 	genre_ids?: unknown;
 	id?: unknown;
 	name?: unknown;
+	overview?: unknown;
 	poster_path?: unknown;
 	release_date?: unknown;
 	title?: unknown;
@@ -405,7 +407,8 @@ const mediaFromTmdb = ({ result, filter }: { result: TmdbResult; filter: TmdbFil
 			typeof result.vote_average === 'number' && Number.isFinite(result.vote_average)
 				? result.vote_average
 				: 0,
-		ratingSource: 'TMDB' as const
+		ratingSource: 'TMDB' as const,
+		plot: truncateMediaPlot(result.overview)
 	};
 };
 
@@ -454,7 +457,8 @@ export const validateGeneratedItems = (
 				record.imdbRating <= 10
 					? record.imdbRating
 					: 0,
-			ratingSource: record.ratingSource === 'TMDB' ? 'TMDB' : 'IMDb'
+			ratingSource: record.ratingSource === 'TMDB' ? 'TMDB' : 'IMDb',
+			plot: typeof record.plot === 'string' ? record.plot : ''
 		};
 		const form = new FormData();
 		form.set('name', 'Generated list validation');

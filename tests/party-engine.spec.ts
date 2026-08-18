@@ -80,7 +80,7 @@ describe('PartyEngine', () => {
 		room.connect('a', 'A');
 		room.connect('b', 'B');
 		const [item] = room.start({ playerId: 'a' }).deck;
-		expect(item).toMatchObject({ img: '', imdbRating: 0 });
+		expect(item).toMatchObject({ img: '', imdbRating: 0, plot: '' });
 	});
 
 	it.each([
@@ -102,7 +102,9 @@ describe('PartyEngine', () => {
 			'ratingSource',
 			{ ...items[0], ratingSource: 'Rotten Tomatoes' },
 			'must be either "IMDb" or "TMDB"'
-		]
+		],
+		['plot type', { ...items[0], plot: 42 }, 'field "plot" must be a string'],
+		['plot length', { ...items[0], plot: 'x'.repeat(361) }, 'cannot exceed 360 characters']
 	])('rejects an invalid %s field', (_field, item, expected) => {
 		expect(() => new PartyEngine([item] as Omit<MediaItem, 'id'>[])).toThrow(expected);
 	});

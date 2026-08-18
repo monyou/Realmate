@@ -7,6 +7,7 @@
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import RealmateLogo from '$lib/components/RealmateLogo.svelte';
 	import { MEDIA_GENRES, validateGenreInput } from '$lib/media-genres';
+	import { MAX_MEDIA_PLOT_LENGTH } from '$lib/media-plot';
 
 	type DraftItem = {
 		key: string;
@@ -17,6 +18,7 @@
 		year: number | undefined;
 		imdbRating: number | undefined;
 		ratingSource: 'IMDb' | 'TMDB';
+		plot: string;
 		expanded: boolean;
 		showErrors: boolean;
 	};
@@ -60,6 +62,7 @@
 		year: undefined,
 		imdbRating: undefined,
 		ratingSource: 'IMDb',
+		plot: '',
 		expanded,
 		showErrors: false
 	});
@@ -81,6 +84,7 @@
 			imdbRating:
 				typeof item.imdbRating === 'number' && item.imdbRating > 0 ? item.imdbRating : undefined,
 			ratingSource: item.ratingSource === 'TMDB' ? 'TMDB' : 'IMDb',
+			plot: typeof item.plot === 'string' ? item.plot : '',
 			expanded: mode === 'create',
 			showErrors: false
 		};
@@ -124,6 +128,7 @@
 	const hasValidRating = (item: DraftItem) =>
 		item.imdbRating === undefined ||
 		(Number.isFinite(item.imdbRating) && item.imdbRating >= 0 && item.imdbRating <= 10);
+	const hasValidPlot = (item: DraftItem) => item.plot.length <= MAX_MEDIA_PLOT_LENGTH;
 	const hasValidPoster = (item: DraftItem) => {
 		if (!item.img.trim()) return true;
 		try {
@@ -140,7 +145,8 @@
 			hasValidGenres(item) &&
 			hasValidYear(item) &&
 			hasValidPoster(item) &&
-			hasValidRating(item)
+			hasValidRating(item) &&
+			hasValidPlot(item)
 		);
 	const hasValidListName = () => Boolean(listName.trim() && listName.length <= 80);
 	const hasValidDescription = () => description.length <= 500;
@@ -161,6 +167,7 @@
 				img: item.img.trim(),
 				year: item.year,
 				imdbRating: item.imdbRating ?? 0,
+				plot: item.plot.trim(),
 				...(item.ratingSource === 'TMDB' ? { ratingSource: 'TMDB' as const } : {})
 			}))
 		)
@@ -492,6 +499,38 @@
 											id={`rating-error-${item.key}`}
 											class="mt-1.5 block text-[10px] text-[#ff8ca0]"
 											>{item.ratingSource} rating must be between 0 and 10.</small
+										>{/if}
+								</div>
+								<div class="min-[700px]:col-span-2">
+									<div class="mb-2 flex items-center justify-between gap-4">
+										<label for={`plot-${item.key}`} class="text-xs font-bold"
+											>Plot <span class="font-normal text-(--muted)">(optional)</span></label
+										>
+										<small class={hasValidPlot(item) ? 'text-(--muted)' : 'text-[#ff8ca0]'}
+											>{item.plot.length}/{MAX_MEDIA_PLOT_LENGTH}</small
+										>
+									</div>
+									<textarea
+										id={`plot-${item.key}`}
+										bind:value={item.plot}
+										maxlength={MAX_MEDIA_PLOT_LENGTH}
+										rows="5"
+										placeholder="A short, spoiler-free summary of the title…"
+										aria-invalid={item.showErrors && !hasValidPlot(item)}
+										aria-describedby={`plot-help-${item.key}${item.showErrors && !hasValidPlot(item) ? ` plot-error-${item.key}` : ''}`}
+										class="box-border w-full resize-y rounded-xl border bg-black/20 px-4 py-3 text-sm leading-relaxed text-white outline-none placeholder:text-[#68616f] focus:border-(--purple) {item.showErrors &&
+										!hasValidPlot(item)
+											? 'border-[#ff5c74]/60'
+											: 'border-white/12'}"></textarea>
+									<small
+										id={`plot-help-${item.key}`}
+										class="mt-1.5 block text-[10px] text-(--muted)"
+										>Shown on the back of the swipe card.</small
+									>
+									{#if item.showErrors && !hasValidPlot(item)}<small
+											id={`plot-error-${item.key}`}
+											class="mt-1 block text-[10px] text-[#ff8ca0]"
+											>Plot cannot exceed {MAX_MEDIA_PLOT_LENGTH} characters.</small
 										>{/if}
 								</div>
 							</div>

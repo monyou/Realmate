@@ -149,7 +149,8 @@ describe('TMDB discovery generation', () => {
 						release_date: '2016-11-10',
 						genre_ids: [18, 878],
 						poster_path: '/arrival.jpg',
-						vote_average: 7.6
+						vote_average: 7.6,
+						overview: 'A linguist works to communicate with visitors from another world.'
 					},
 					{
 						id: 157336,
@@ -177,9 +178,15 @@ describe('TMDB discovery generation', () => {
 				expect.objectContaining({
 					title: 'Arrival',
 					img: `${TMDB_IMAGE_BASE_URL}/arrival.jpg`,
-					ratingSource: 'TMDB'
+					ratingSource: 'TMDB',
+					plot: 'A linguist works to communicate with visitors from another world.'
 				}),
-				expect.objectContaining({ title: 'Interstellar', img: '', ratingSource: 'TMDB' })
+				expect.objectContaining({
+					title: 'Interstellar',
+					img: '',
+					ratingSource: 'TMDB',
+					plot: ''
+				})
 			])
 		);
 		expect(

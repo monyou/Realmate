@@ -97,7 +97,8 @@ Every list entry contains:
 	"img": "https://example.com/poster.jpg",
 	"year": 2024,
 	"imdbRating": 8.5,
-	"ratingSource": "TMDB"
+	"ratingSource": "TMDB",
+	"plot": "Paul Atreides unites with Chani and the Fremen while seeking revenge for his family."
 }
 ```
 
@@ -110,6 +111,7 @@ Every list entry contains:
 - `img` is optional. When omitted, the bundled default poster is shown.
 - `imdbRating` is optional. When omitted or set to `0`, the rating is shown as unknown.
 - `ratingSource` is optional and may be `IMDb` or `TMDB`; older/manual entries default to IMDb in the UI.
+- `plot` is optional and limited to 360 characters. Clicking or pressing Enter on a swipe card flips it to show the plot. TMDB-generated entries use the discover result's overview when available.
 - A list can contain up to 500 titles.
 - The complete list is rejected if any entry is invalid.
 

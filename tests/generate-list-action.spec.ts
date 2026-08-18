@@ -49,7 +49,8 @@ describe('generate list action', () => {
 					year: 2016,
 					img: '',
 					imdbRating: 7.6,
-					ratingSource: 'TMDB'
+					ratingSource: 'TMDB',
+					plot: 'A linguist works to communicate with visitors from another world.'
 				}
 			]
 		});
@@ -89,7 +90,8 @@ describe('generate list action', () => {
 					year: 2016,
 					img: '',
 					imdbRating: 7.6,
-					ratingSource: 'TMDB'
+					ratingSource: 'TMDB',
+					plot: 'A linguist works to communicate with visitors from another world.'
 				}
 			]
 		});

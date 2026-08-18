@@ -81,7 +81,8 @@ export const validateMovieListForm = (formData: FormData): ValidMovieList | Inva
 	const normalizedItems = (items as SourceMedia).map((item) => ({
 		...item,
 		img: item.img ?? '',
-		imdbRating: item.imdbRating ?? 0
+		imdbRating: item.imdbRating ?? 0,
+		plot: item.plot ?? ''
 	}));
 
 	return {

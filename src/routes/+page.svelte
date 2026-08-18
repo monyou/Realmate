@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { assets, resolve } from '$app/paths';
+	import { asset, resolve } from '$app/paths';
 	import Confetti from '$lib/components/Confetti.svelte';
 	import RealmateLogo from '$lib/components/RealmateLogo.svelte';
 	import { normalizeRoomCode, partyRoomPath } from '$lib/party-room';
@@ -21,7 +21,7 @@
 	];
 	const noiseBackground =
 		"url(\"data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E\")";
-	const defaultPoster = `${assets}/assets/default_poster.jpeg`;
+	const defaultPoster = asset('/assets/default_poster.jpeg');
 
 	let party = $state<PartyState | null>(null);
 	let roomId = $derived(data.roomId);
@@ -34,14 +34,17 @@
 	let pageReady = $state(true);
 	let joinError = $state('');
 	let roomMissing = $state(false);
-	let copied = $state(false);
+	let copyStatus = $state<'idle' | 'copied' | 'failed'>('idle');
 	let dragX = $state(0);
 	let dragging = $state(false);
+	let cardFlipped = $state(false);
 	let leaving = $state(false);
 	let dragStart = 0;
+	let pointerMoved = false;
 	let previousCardKey = '';
 	let voteSendTimer: ReturnType<typeof setTimeout> | undefined;
 	let voteFallback: ReturnType<typeof setTimeout> | undefined;
+	let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
 	let pollTimer: ReturnType<typeof setInterval> | undefined;
 	let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 	let pollInFlight = false;
@@ -54,6 +57,14 @@
 		| { type: 'leave' };
 
 	type PartyResponse = { playerId: string; state: PartyState };
+	const swipeCardKey = (state: PartyState | null, activePlayerId: string) => {
+		const activePlayer = state?.players.find((player) => player.id === activePlayerId);
+		const activeItem =
+			state?.phase === 'playing' && activePlayer
+				? (state.deck[activePlayer.progress] ?? null)
+				: null;
+		return `${state?.roundId ?? 'no-round'}:${activePlayer?.progress ?? 'no-progress'}:${activeItem?.id ?? 'no-card'}`;
+	};
 
 	const me = $derived(party?.players.find((player) => player.id === playerId));
 	const currentItem = $derived(
@@ -74,17 +85,7 @@
 	const cardTransform = $derived(
 		`transform: translate3d(${dragX}px, 0, 0) rotate(${dragX / 19}deg); transition: ${dragging ? 'none' : 'transform 260ms cubic-bezier(.2,.9,.2,1)'};`
 	);
-
-	$effect(() => {
-		const activeCardKey = `${party?.roundId ?? 'no-round'}:${currentItem?.id ?? 'no-card'}`;
-		if (activeCardKey !== previousCardKey) {
-			previousCardKey = activeCardKey;
-			if (voteSendTimer) clearTimeout(voteSendTimer);
-			if (voteFallback) clearTimeout(voteFallback);
-			dragX = 0;
-			leaving = false;
-		}
-	});
+	const currentCardKey = $derived(swipeCardKey(party, playerId));
 
 	onMount(() => {
 		const guestSeed = localStorage.getItem('realmate-guest-seed') ?? crypto.randomUUID();
@@ -109,6 +110,7 @@
 			if (heartbeatTimer) clearInterval(heartbeatTimer);
 			if (voteSendTimer) clearTimeout(voteSendTimer);
 			if (voteFallback) clearTimeout(voteFallback);
+			if (copyResetTimer) clearTimeout(copyResetTimer);
 			if (roomId) {
 				navigator.sendBeacon(
 					partyEndpoint(),
@@ -133,8 +135,23 @@
 	}
 
 	function applyResponse(response: PartyResponse) {
+		if (!party || response.state.revision >= party.revision) {
+			const incomingCardKey = swipeCardKey(response.state, response.playerId);
+			if (incomingCardKey !== previousCardKey) {
+				previousCardKey = incomingCardKey;
+				if (voteSendTimer) clearTimeout(voteSendTimer);
+				if (voteFallback) clearTimeout(voteFallback);
+				voteSendTimer = undefined;
+				voteFallback = undefined;
+				dragX = 0;
+				dragging = false;
+				cardFlipped = false;
+				pointerMoved = false;
+				leaving = false;
+			}
+			party = response.state;
+		}
 		playerId = response.playerId;
-		if (!party || response.state.revision >= party.revision) party = response.state;
 		connected = true;
 	}
 
@@ -184,16 +201,15 @@
 
 	async function copyRoomCode() {
 		if (!roomCode) return;
+		if (copyResetTimer) clearTimeout(copyResetTimer);
 		try {
+			if (!navigator.clipboard) throw new Error('Clipboard access is unavailable.');
 			await navigator.clipboard.writeText(roomCode);
+			copyStatus = 'copied';
 		} catch {
-			const input = document.querySelector<HTMLInputElement>('#room-code');
-			input?.select();
-			document.execCommand('copy');
-			window.getSelection()?.removeAllRanges();
+			copyStatus = 'failed';
 		}
-		copied = true;
-		setTimeout(() => (copied = false), 1_800);
+		copyResetTimer = setTimeout(() => (copyStatus = 'idle'), 2_400);
 	}
 
 	function returnHome() {
@@ -238,6 +254,7 @@
 		if (!currentItem || !party?.roundId || leaving) return;
 		leaving = true;
 		dragging = false;
+		cardFlipped = false;
 		dragX = (liked ? 1 : -1) * Math.max(window.innerWidth, 520);
 		const itemId = currentItem.id;
 		const roundId = party.roundId;
@@ -254,6 +271,7 @@
 	function pointerDown(event: PointerEvent) {
 		if (leaving) return;
 		dragging = true;
+		pointerMoved = false;
 		dragStart = event.clientX - dragX;
 		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
 	}
@@ -261,13 +279,31 @@
 	function pointerMove(event: PointerEvent) {
 		if (!dragging || leaving) return;
 		dragX = event.clientX - dragStart;
+		if (Math.abs(dragX) > 6) pointerMoved = true;
 	}
 
 	function pointerUp() {
 		if (!dragging) return;
 		dragging = false;
 		if (Math.abs(dragX) >= 88) decide(dragX > 0);
-		else dragX = 0;
+		else {
+			dragX = 0;
+			if (!pointerMoved && currentItem?.plot?.trim()) cardFlipped = !cardFlipped;
+		}
+	}
+
+	function pointerCancel() {
+		if (!dragging) return;
+		dragging = false;
+		dragX = 0;
+		pointerMoved = false;
+	}
+
+	function handleCardKey(event: KeyboardEvent) {
+		if (!currentItem?.plot?.trim() || leaving) return;
+		if (event.key !== 'Enter' && event.key !== ' ') return;
+		event.preventDefault();
+		cardFlipped = !cardFlipped;
 	}
 
 	function handleKey(event: KeyboardEvent) {
@@ -582,9 +618,18 @@
 								class="min-w-20 cursor-pointer rounded-xl border-0 bg-[linear-gradient(120deg,var(--purple),#9a79ff)] px-3 py-2.75 text-[11px] font-extrabold text-white shadow-[0_8px_22px_rgba(124,92,255,0.24)] transition-transform hover:-translate-y-px active:translate-y-px"
 								onclick={() => void copyRoomCode()}
 							>
-								{copied ? 'Copied ✓' : 'Copy code'}
+								{copyStatus === 'copied'
+									? 'Copied ✓'
+									: copyStatus === 'failed'
+										? 'Try again'
+										: 'Copy code'}
 							</button>
 						</div>
+						{#if copyStatus === 'failed'}
+							<p class="mt-2 px-1 text-[10px] text-[#ff9bad]" role="status">
+								Clipboard access was blocked. Select the code and copy it manually.
+							</p>
+						{/if}
 					</div>
 
 					<div
@@ -694,84 +739,151 @@
 						</div>
 					{/if}
 					{#if currentItem}
-						{#key currentItem.id}
-							<article
+						{#key currentCardKey}
+							<div
 								class="absolute inset-0 z-3 cursor-grab touch-none overflow-hidden rounded-[28px] border border-white/14 bg-[linear-gradient(145deg,#282131,#15121a)] shadow-[0_25px_60px_rgba(0,0,0,0.48),inset_0_1px_rgba(255,255,255,0.08)] will-change-transform max-[380px]:rounded-3xl"
 								class:cursor-grabbing={dragging}
 								style={cardTransform}
+								role="button"
+								tabindex="0"
+								aria-pressed={currentItem.plot?.trim() ? cardFlipped : undefined}
+								aria-label={currentItem.plot?.trim()
+									? `${currentItem.title}. ${cardFlipped ? 'Showing plot. Press Enter to return to the poster.' : 'Press Enter to show the plot.'}`
+									: `${currentItem.title}. Swipe left to pass or right to like.`}
 								onpointerdown={pointerDown}
 								onpointermove={pointerMove}
 								onpointerup={pointerUp}
-								onpointercancel={pointerUp}
+								onpointercancel={pointerCancel}
+								onkeydown={handleCardKey}
 							>
-								<img
-									class="pointer-events-none size-full object-cover select-none"
-									src={posterSource(currentItem)}
-									alt={`${currentItem.title} poster`}
-									draggable="false"
-									onerror={useDefaultPoster}
-								/>
 								<div
-									class="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,4,8,0.02)_40%,rgba(5,4,8,0.42)_67%,rgba(5,4,8,0.97)_100%)]"
-								></div>
-								<div
-									class="absolute top-9.5 right-6 z-3 rotate-10 rounded-lg border-4 border-current px-3 py-1.75 pb-1.25 text-[25px] font-[950] tracking-[0.02em] text-(--rose) [text-shadow:0_2px_12px_rgba(0,0,0,0.3)]"
-									style={`opacity:${noStrength}`}
+									class="relative size-full transition-transform duration-500 ease-[cubic-bezier(.2,.8,.2,1)] transform-3d motion-reduce:transition-none"
+									style={`transform: rotateY(${cardFlipped ? 180 : 0}deg);`}
 								>
-									PASS
-								</div>
-								<div
-									class="absolute top-9.5 left-6 z-3 rotate-[-10deg] rounded-lg border-4 border-current px-3 py-1.75 pb-1.25 text-[25px] font-[950] tracking-[0.02em] text-(--mint) [text-shadow:0_2px_12px_rgba(0,0,0,0.3)]"
-									style={`opacity:${yesStrength}`}
-								>
-									YES!
-								</div>
-								<div class="absolute right-0 bottom-0 left-0 p-6.25 pt-7 text-left">
-									<div class="mb-2.25 flex items-center justify-between gap-3">
-										<div class="flex items-center gap-2.25 text-xs font-bold text-[#d2cad8]">
-											<span
-												class="rounded-[99px] border border-white/17 bg-[rgba(12,10,16,0.45)] px-2.25 py-1.25 text-[9px] font-[850] tracking-[0.12em] uppercase backdrop-blur-lg"
-												class:text-[#ff93a4]={currentItem.type === 'movie'}
-												class:text-[#9c8cff]={currentItem.type === 'series'}
-												>{mediaLabel(currentItem)}</span
+									<div class="absolute inset-0 overflow-hidden backface-hidden">
+										<img
+											class="pointer-events-none size-full object-cover select-none"
+											src={posterSource(currentItem)}
+											alt={`${currentItem.title} poster`}
+											draggable="false"
+											onerror={useDefaultPoster}
+										/>
+										<div
+											class="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,4,8,0.02)_40%,rgba(5,4,8,0.42)_67%,rgba(5,4,8,0.97)_100%)]"
+										></div>
+										{#if currentItem.plot?.trim()}
+											<div
+												class="absolute top-5 left-1/2 -translate-x-1/2 rounded-full border border-white/14 bg-black/45 px-3 py-1.5 text-[8px] font-extrabold tracking-[0.12em] text-white/75 uppercase backdrop-blur-md"
 											>
-											<span>{currentItem.year}</span>
+												Tap for plot
+											</div>
+										{/if}
+										<div
+											class="absolute top-9.5 right-6 z-3 rotate-10 rounded-lg border-4 border-current px-3 py-1.75 pb-1.25 text-[25px] font-[950] tracking-[0.02em] text-(--rose) [text-shadow:0_2px_12px_rgba(0,0,0,0.3)]"
+											style={`opacity:${noStrength}`}
+										>
+											PASS
 										</div>
 										<div
-											class="inline-flex min-h-7 flex-none items-center gap-1 rounded-[9px] border border-[rgba(255,207,92,0.24)] bg-[rgba(12,10,16,0.62)] px-2 py-1.25 shadow-[inset_0_1px_rgba(255,255,255,0.06)] backdrop-blur-[10px]"
-											aria-label={ratingAriaLabel(currentItem)}
+											class="absolute top-9.5 left-6 z-3 rotate-[-10deg] rounded-lg border-4 border-current px-3 py-1.75 pb-1.25 text-[25px] font-[950] tracking-[0.02em] text-(--mint) [text-shadow:0_2px_12px_rgba(0,0,0,0.3)]"
+											style={`opacity:${yesStrength}`}
 										>
-											<span
-												class="text-[11px] text-(--gold) drop-shadow-[0_0_5px_rgba(255,207,92,0.32)]"
-												aria-hidden="true">★</span
+											YES!
+										</div>
+										<div class="absolute right-0 bottom-0 left-0 p-6.25 pt-7 text-left">
+											<div class="mb-2.25 flex items-center justify-between gap-3">
+												<div class="flex items-center gap-2.25 text-xs font-bold text-[#d2cad8]">
+													<span
+														class="rounded-[99px] border border-white/17 bg-[rgba(12,10,16,0.45)] px-2.25 py-1.25 text-[9px] font-[850] tracking-[0.12em] uppercase backdrop-blur-lg"
+														class:text-[#ff93a4]={currentItem.type === 'movie'}
+														class:text-[#9c8cff]={currentItem.type === 'series'}
+														>{mediaLabel(currentItem)}</span
+													>
+													<span>{currentItem.year}</span>
+												</div>
+												<div
+													class="inline-flex min-h-7 flex-none items-center gap-1 rounded-[9px] border border-[rgba(255,207,92,0.24)] bg-[rgba(12,10,16,0.62)] px-2 py-1.25 shadow-[inset_0_1px_rgba(255,255,255,0.06)] backdrop-blur-[10px]"
+													aria-label={ratingAriaLabel(currentItem)}
+												>
+													<span
+														class="text-[11px] text-(--gold) drop-shadow-[0_0_5px_rgba(255,207,92,0.32)]"
+														aria-hidden="true">★</span
+													>
+													<b class="text-xs leading-none tracking-[-0.02em] text-[#fff5d3]"
+														>{ratingLabel(currentItem)}</b
+													>
+													<small
+														class="ml-px text-[7px] font-[850] tracking-widest text-[#b7ad8a] uppercase"
+														>{currentItem.ratingSource ?? 'IMDb'}</small
+													>
+												</div>
+											</div>
+											<h2
+												class="m-0 max-w-[95%] text-[clamp(27px,8vw,38px)] leading-[0.98] font-[850] tracking-[-0.055em] text-balance"
 											>
-											<b class="text-xs leading-none tracking-[-0.02em] text-[#fff5d3]"
-												>{ratingLabel(currentItem)}</b
+												{currentItem.title}
+											</h2>
+											<div
+												class="mt-3 flex flex-wrap gap-1.5"
+												aria-label={`Genres: ${currentItem.genres.join(', ')}`}
 											>
-											<small
-												class="ml-px text-[7px] font-[850] tracking-widest text-[#b7ad8a] uppercase"
-												>{currentItem.ratingSource ?? 'IMDb'}</small
-											>
+												{#each currentItem.genres.slice(0, 3) as genre (genre)}
+													<span
+														class="rounded-full border border-white/11 bg-white/7.5 px-2 py-1.25 text-[8px] font-[750] tracking-[0.045em] text-[#ded8e5] shadow-[inset_0_1px_rgba(255,255,255,0.035)] backdrop-blur-lg"
+														>{genre}</span
+													>
+												{/each}
+											</div>
 										</div>
 									</div>
-									<h2
-										class="m-0 max-w-[95%] text-[clamp(27px,8vw,38px)] leading-[0.98] font-[850] tracking-[-0.055em] text-balance"
-									>
-										{currentItem.title}
-									</h2>
 									<div
-										class="mt-3 flex flex-wrap gap-1.5"
-										aria-label={`Genres: ${currentItem.genres.join(', ')}`}
+										class="absolute inset-0 transform-[rotateY(180deg)] overflow-hidden bg-[linear-gradient(145deg,#201a2b,#100e15)] backface-hidden"
 									>
-										{#each currentItem.genres.slice(0, 3) as genre (genre)}
-											<span
-												class="rounded-full border border-white/11 bg-white/7.5 px-2 py-1.25 text-[8px] font-[750] tracking-[0.045em] text-[#ded8e5] shadow-[inset_0_1px_rgba(255,255,255,0.035)] backdrop-blur-lg"
-												>{genre}</span
+										<img
+											class="pointer-events-none absolute inset-0 size-full scale-110 object-cover opacity-12 blur-md select-none"
+											src={posterSource(currentItem)}
+											alt=""
+											draggable="false"
+											onerror={useDefaultPoster}
+										/>
+										<div
+											class="absolute inset-0 bg-[linear-gradient(160deg,rgba(36,27,70,.92),rgba(11,9,16,.98)_70%)]"
+										></div>
+										<div class="relative flex size-full flex-col p-6.25 text-left">
+											<div class="flex items-center justify-between gap-3">
+												<span
+													class="text-[9px] font-extrabold tracking-[0.18em] text-(--rose) uppercase"
+													>Plot</span
+												>
+												<span class="text-[9px] font-bold text-white/45">Tap to return</span>
+											</div>
+											<h2
+												class="mt-5 text-[clamp(26px,7vw,36px)] leading-[1.02] font-[850] tracking-tighter text-balance"
 											>
-										{/each}
+												{currentItem.title}
+											</h2>
+											<div class="mt-4 flex flex-wrap gap-1.5">
+												{#each currentItem.genres.slice(0, 3) as genre (genre)}
+													<span
+														class="rounded-full border border-white/11 bg-white/7 px-2 py-1 text-[8px] font-bold text-white/70"
+														>{genre}</span
+													>
+												{/each}
+											</div>
+											<p
+												class="mt-6 min-h-0 flex-1 overflow-y-auto pr-1 text-[clamp(13px,3.6vw,15px)] leading-[1.7] whitespace-pre-line text-[#ddd7e5]"
+											>
+												{currentItem.plot}
+											</p>
+											<p
+												class="mt-5 border-t border-white/9 pt-4 text-[9px] font-bold tracking-[0.08em] text-white/40 uppercase"
+											>
+												Swipe or use the buttons when you are ready
+											</p>
+										</div>
 									</div>
 								</div>
-							</article>
+							</div>
 						{/key}
 					{/if}
 				</div>

@@ -7,6 +7,7 @@ import type {
 	VotePayload
 } from '../types.ts';
 import { validateMediaGenres } from '../media-genres.ts';
+import { MAX_MEDIA_PLOT_LENGTH, normalizeMediaPlot } from '../media-plot.ts';
 
 type PlayerRecord = {
 	id: string;
@@ -24,7 +25,8 @@ const allowedMediaFields = new Set<string>([
 	...requiredMediaFields,
 	'img',
 	'imdbRating',
-	'ratingSource'
+	'ratingSource',
+	'plot'
 ]);
 const invalidMedia = (message: string) => new Error(`${message} Check the list and try again.`);
 
@@ -201,6 +203,14 @@ export class PartyEngine {
 			) {
 				throw invalidMedia(`${label} field "ratingSource" must be either "IMDb" or "TMDB".`);
 			}
+			if (item.plot !== undefined && typeof item.plot !== 'string') {
+				throw invalidMedia(`${label} field "plot" must be a string when provided.`);
+			}
+			if (typeof item.plot === 'string' && item.plot.length > MAX_MEDIA_PLOT_LENGTH) {
+				throw invalidMedia(
+					`${label} field "plot" cannot exceed ${MAX_MEDIA_PLOT_LENGTH} characters.`
+				);
+			}
 			if (item.id !== undefined && (typeof item.id !== 'string' || item.id.trim().length === 0)) {
 				throw invalidMedia(`${label} field "id" must be a non-empty string when provided.`);
 			}
@@ -210,6 +220,7 @@ export class PartyEngine {
 				title: item.title.trim(),
 				img: item.img?.trim() ?? '',
 				imdbRating: item.imdbRating ?? 0,
+				plot: typeof item.plot === 'string' ? normalizeMediaPlot(item.plot) : '',
 				genres: genreValidation.genres,
 				id: makeId(item, index)
 			};
