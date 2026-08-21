@@ -17,4 +17,18 @@ describe('swipe card mobile input', () => {
 	it('keeps touch-action disabled on the draggable card', () => {
 		expect(homePage).toMatch(/class="[^"]*touch-none[^"]*"/);
 	});
+
+	it('isolates both card faces during the plot flip', () => {
+		expect(homePage.match(/-webkit-backface-visibility: hidden/g)).toHaveLength(2);
+		expect(homePage).toContain('-webkit-transform: translateZ(0.1px)');
+		expect(homePage).toContain('-webkit-transform: rotateY(180deg) translateZ(0.1px)');
+	});
+
+	it('advances optimistically and sends queued votes in the background', () => {
+		expect(homePage).toContain(
+			'pendingVotes = [...pendingVotes, { roundId, itemId, liked, position }]'
+		);
+		expect(homePage).toContain('void flushVoteQueue()');
+		expect(homePage).toContain("keepalive: action.type === 'vote'");
+	});
 });
