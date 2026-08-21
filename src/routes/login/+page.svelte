@@ -90,7 +90,13 @@
 				</p>
 			{/if}
 
-			<form method="POST" class="mt-7 space-y-4" novalidate use:enhance={handleSubmit}>
+			<form
+				method="POST"
+				class="mt-7 space-y-4"
+				autocomplete="on"
+				novalidate
+				use:enhance={handleSubmit}
+			>
 				<div>
 					<label class="mb-2 block text-xs font-bold text-[#d8d2e2]" for="email">Email</label>
 					<input
@@ -99,7 +105,7 @@
 						type="email"
 						bind:value={email}
 						required
-						autocomplete="email"
+						autocomplete="username"
 						placeholder="you@example.com"
 						aria-invalid={Boolean(emailError)}
 						aria-describedby={emailError ? 'email-error' : undefined}

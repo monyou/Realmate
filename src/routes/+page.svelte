@@ -3,6 +3,11 @@
 	import { asset, resolve } from '$app/paths';
 	import Confetti from '$lib/components/Confetti.svelte';
 	import RealmateLogo from '$lib/components/RealmateLogo.svelte';
+	import {
+		optimisticPlayerProgress,
+		voteWasAcknowledged,
+		type QueuedVote
+	} from '$lib/optimistic-votes';
 	import { normalizeRoomCode, partyRoomPath } from '$lib/party-room';
 	import type { MediaItem, PartyState } from '$lib/types';
 	import type { PageData } from './$types';
@@ -33,6 +38,7 @@
 	let connected = $state(false);
 	let pageReady = $state(true);
 	let joinError = $state('');
+	let voteError = $state('');
 	let roomMissing = $state(false);
 	let copyStatus = $state<'idle' | 'copied' | 'failed'>('idle');
 	let dragX = $state(0);
@@ -41,9 +47,10 @@
 	let leaving = $state(false);
 	let dragStart = 0;
 	let pointerMoved = false;
-	let previousCardKey = '';
+	let activeTouchId: number | null = null;
+	let pendingVotes = $state<QueuedVote[]>([]);
+	let voteQueueRunning = false;
 	let voteSendTimer: ReturnType<typeof setTimeout> | undefined;
-	let voteFallback: ReturnType<typeof setTimeout> | undefined;
 	let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
 	let pollTimer: ReturnType<typeof setInterval> | undefined;
 	let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
@@ -57,27 +64,24 @@
 		| { type: 'leave' };
 
 	type PartyResponse = { playerId: string; state: PartyState };
-	const swipeCardKey = (state: PartyState | null, activePlayerId: string) => {
-		const activePlayer = state?.players.find((player) => player.id === activePlayerId);
-		const activeItem =
-			state?.phase === 'playing' && activePlayer
-				? (state.deck[activePlayer.progress] ?? null)
-				: null;
-		return `${state?.roundId ?? 'no-round'}:${activePlayer?.progress ?? 'no-progress'}:${activeItem?.id ?? 'no-card'}`;
+	const swipeCardKey = (state: PartyState | null, progress: number) => {
+		const activeItem = state?.phase === 'playing' ? (state.deck[progress] ?? null) : null;
+		return `${state?.roundId ?? 'no-round'}:${progress}:${activeItem?.id ?? 'no-card'}`;
 	};
 
 	const me = $derived(party?.players.find((player) => player.id === playerId));
+	const activeProgress = $derived(optimisticPlayerProgress(party, playerId, pendingVotes));
 	const currentItem = $derived(
-		party?.phase === 'playing' && me ? (party.deck[me.progress] ?? null) : null
+		party?.phase === 'playing' && me ? (party.deck[activeProgress] ?? null) : null
 	);
 	const nextItem = $derived(
-		party?.phase === 'playing' && me ? (party.deck[me.progress + 1] ?? null) : null
+		party?.phase === 'playing' && me ? (party.deck[activeProgress + 1] ?? null) : null
 	);
 	const thirdItem = $derived(
-		party?.phase === 'playing' && me ? (party.deck[me.progress + 2] ?? null) : null
+		party?.phase === 'playing' && me ? (party.deck[activeProgress + 2] ?? null) : null
 	);
 	const finishedSwiping = $derived(
-		party?.phase === 'playing' && me && me.progress >= party.deck.length
+		party?.phase === 'playing' && me && activeProgress >= party.deck.length
 	);
 	const readyToStart = $derived((party?.onlineCount ?? 0) >= 2);
 	const yesStrength = $derived(Math.min(1, Math.max(0, dragX / 110)));
@@ -85,7 +89,7 @@
 	const cardTransform = $derived(
 		`transform: translate3d(${dragX}px, 0, 0) rotate(${dragX / 19}deg); transition: ${dragging ? 'none' : 'transform 260ms cubic-bezier(.2,.9,.2,1)'};`
 	);
-	const currentCardKey = $derived(swipeCardKey(party, playerId));
+	const currentCardKey = $derived(swipeCardKey(party, activeProgress));
 
 	onMount(() => {
 		const guestSeed = localStorage.getItem('realmate-guest-seed') ?? crypto.randomUUID();
@@ -109,7 +113,6 @@
 			if (pollTimer) clearInterval(pollTimer);
 			if (heartbeatTimer) clearInterval(heartbeatTimer);
 			if (voteSendTimer) clearTimeout(voteSendTimer);
-			if (voteFallback) clearTimeout(voteFallback);
 			if (copyResetTimer) clearTimeout(copyResetTimer);
 			if (roomId) {
 				navigator.sendBeacon(
@@ -136,46 +139,44 @@
 
 	function applyResponse(response: PartyResponse) {
 		if (!party || response.state.revision >= party.revision) {
-			const incomingCardKey = swipeCardKey(response.state, response.playerId);
-			if (incomingCardKey !== previousCardKey) {
-				previousCardKey = incomingCardKey;
-				if (voteSendTimer) clearTimeout(voteSendTimer);
-				if (voteFallback) clearTimeout(voteFallback);
-				voteSendTimer = undefined;
-				voteFallback = undefined;
-				dragX = 0;
-				dragging = false;
-				cardFlipped = false;
-				pointerMoved = false;
-				leaving = false;
+			if (response.state.roundId !== party?.roundId || response.state.phase !== 'playing') {
+				pendingVotes = [];
 			}
+			const incomingProgress = optimisticPlayerProgress(
+				response.state,
+				response.playerId,
+				pendingVotes
+			);
+			if (swipeCardKey(response.state, incomingProgress) !== currentCardKey) resetCard();
 			party = response.state;
 		}
 		playerId = response.playerId;
 		connected = true;
 	}
 
-	async function requestParty(action: PartyAction) {
+	async function requestParty(action: PartyAction): Promise<PartyResponse | null> {
 		try {
 			const response = await fetch(partyEndpoint(), {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(action)
+				body: JSON.stringify(action),
+				keepalive: action.type === 'vote'
 			});
 			if (!response.ok) {
 				const body = (await response.json().catch(() => null)) as { message?: string } | null;
 				roomMissing = response.status === 404;
 				throw new Error(body?.message ?? `Party request failed (${response.status})`);
 			}
-			applyResponse((await response.json()) as PartyResponse);
+			const partyResponse = (await response.json()) as PartyResponse;
+			applyResponse(partyResponse);
 			joinError = '';
 			roomMissing = false;
-			return true;
+			return partyResponse;
 		} catch (error) {
 			if (!roomMissing) console.error(error);
 			connected = false;
 			joinError = error instanceof Error ? error.message : 'The watch party is unavailable.';
-			return false;
+			return null;
 		}
 	}
 
@@ -244,7 +245,7 @@
 	function sendAgain() {
 		if (!party?.roundId) return;
 		if (voteSendTimer) clearTimeout(voteSendTimer);
-		if (voteFallback) clearTimeout(voteFallback);
+		pendingVotes = [];
 		dragX = 0;
 		leaving = false;
 		void requestParty({ type: 'again', roundId: party.roundId });
@@ -252,37 +253,86 @@
 
 	function decide(liked: boolean) {
 		if (!currentItem || !party?.roundId || leaving) return;
+		voteError = '';
 		leaving = true;
 		dragging = false;
 		cardFlipped = false;
 		dragX = (liked ? 1 : -1) * Math.max(window.innerWidth, 520);
 		const itemId = currentItem.id;
 		const roundId = party.roundId;
-		voteSendTimer = setTimeout(
-			() => void requestParty({ type: 'vote', roundId, itemId, liked }),
-			190
-		);
-		voteFallback = setTimeout(() => {
-			dragX = 0;
-			leaving = false;
-		}, 1_200);
+		const position = activeProgress;
+		voteSendTimer = setTimeout(() => {
+			voteSendTimer = undefined;
+			pendingVotes = [...pendingVotes, { roundId, itemId, liked, position }];
+			resetCard();
+			void flushVoteQueue();
+		}, 190);
 	}
 
-	function pointerDown(event: PointerEvent) {
+	function resetCard() {
+		if (voteSendTimer) clearTimeout(voteSendTimer);
+		voteSendTimer = undefined;
+		dragX = 0;
+		dragging = false;
+		cardFlipped = false;
+		pointerMoved = false;
+		activeTouchId = null;
+		leaving = false;
+	}
+
+	async function flushVoteQueue() {
+		if (voteQueueRunning) return;
+		voteQueueRunning = true;
+
+		try {
+			while (pendingVotes.length > 0) {
+				const vote = pendingVotes[0];
+				let response: PartyResponse | null = null;
+				for (let attempt = 0; attempt < 2 && !response; attempt += 1) {
+					response = await requestParty({
+						type: 'vote',
+						roundId: vote.roundId,
+						itemId: vote.itemId,
+						liked: vote.liked
+					});
+				}
+
+				if (!response) {
+					pendingVotes = [];
+					voteError = 'Your choices could not be saved. Please swipe again.';
+					await refreshParty();
+					break;
+				}
+
+				if (!voteWasAcknowledged(response.state, response.playerId, vote)) {
+					pendingVotes = [];
+					voteError = 'Your last choice was not saved. Please swipe it again.';
+					break;
+				}
+
+				voteError = '';
+				pendingVotes = pendingVotes.slice(1);
+			}
+		} finally {
+			voteQueueRunning = false;
+			if (pendingVotes.length > 0) void flushVoteQueue();
+		}
+	}
+
+	function beginDrag(clientX: number) {
 		if (leaving) return;
 		dragging = true;
 		pointerMoved = false;
-		dragStart = event.clientX - dragX;
-		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+		dragStart = clientX - dragX;
 	}
 
-	function pointerMove(event: PointerEvent) {
+	function moveDrag(clientX: number) {
 		if (!dragging || leaving) return;
-		dragX = event.clientX - dragStart;
+		dragX = clientX - dragStart;
 		if (Math.abs(dragX) > 6) pointerMoved = true;
 	}
 
-	function pointerUp() {
+	function finishDrag() {
 		if (!dragging) return;
 		dragging = false;
 		if (Math.abs(dragX) >= 88) decide(dragX > 0);
@@ -292,11 +342,96 @@
 		}
 	}
 
-	function pointerCancel() {
+	function cancelDrag() {
 		if (!dragging) return;
 		dragging = false;
 		dragX = 0;
 		pointerMoved = false;
+	}
+
+	function pointerDown(event: PointerEvent) {
+		// Mobile browsers also emit Touch Events. Handle touch through that API so
+		// installed iOS/Android web apps are not dependent on pointer capture.
+		if (event.pointerType === 'touch') return;
+		beginDrag(event.clientX);
+		try {
+			(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+		} catch {
+			// Capture is an enhancement; the drag still works while the pointer stays on the card.
+		}
+	}
+
+	function pointerMove(event: PointerEvent) {
+		if (event.pointerType === 'touch') return;
+		moveDrag(event.clientX);
+	}
+
+	function pointerUp(event: PointerEvent) {
+		if (event.pointerType === 'touch') return;
+		moveDrag(event.clientX);
+		finishDrag();
+	}
+
+	function pointerCancel(event: PointerEvent) {
+		if (event.pointerType === 'touch') return;
+		cancelDrag();
+	}
+
+	function findTouch(touches: TouchList, identifier: number) {
+		for (let index = 0; index < touches.length; index += 1) {
+			const touch = touches.item(index);
+			if (touch?.identifier === identifier) return touch;
+		}
+		return null;
+	}
+
+	function touchStart(event: TouchEvent) {
+		if (activeTouchId !== null || event.touches.length !== 1 || leaving) return;
+		const touch = event.changedTouches.item(0);
+		if (!touch) return;
+		event.preventDefault();
+		activeTouchId = touch.identifier;
+		beginDrag(touch.clientX);
+	}
+
+	function touchMove(event: TouchEvent) {
+		if (activeTouchId === null) return;
+		const touch = findTouch(event.changedTouches, activeTouchId);
+		if (!touch) return;
+		event.preventDefault();
+		moveDrag(touch.clientX);
+	}
+
+	function touchEnd(event: TouchEvent) {
+		if (activeTouchId === null) return;
+		const touch = findTouch(event.changedTouches, activeTouchId);
+		if (!touch) return;
+		moveDrag(touch.clientX);
+		activeTouchId = null;
+		finishDrag();
+	}
+
+	function touchCancel(event: TouchEvent) {
+		if (activeTouchId === null || !findTouch(event.changedTouches, activeTouchId)) return;
+		activeTouchId = null;
+		cancelDrag();
+	}
+
+	function mobileSwipe(node: HTMLElement) {
+		const nonPassive = { passive: false } as const;
+		node.addEventListener('touchstart', touchStart, nonPassive);
+		node.addEventListener('touchmove', touchMove, nonPassive);
+		node.addEventListener('touchend', touchEnd);
+		node.addEventListener('touchcancel', touchCancel);
+
+		return {
+			destroy() {
+				node.removeEventListener('touchstart', touchStart);
+				node.removeEventListener('touchmove', touchMove);
+				node.removeEventListener('touchend', touchEnd);
+				node.removeEventListener('touchcancel', touchCancel);
+			}
+		};
 	}
 
 	function handleCardKey(event: KeyboardEvent) {
@@ -318,6 +453,10 @@
 			.map((word) => word[0])
 			.join('')
 			.slice(0, 2);
+	}
+
+	function displayedProgress(player: PartyState['players'][number]) {
+		return player.id === playerId ? activeProgress : player.progress;
 	}
 
 	function avatarColor(avatar: number) {
@@ -705,15 +844,20 @@
 					<div
 						class="flex items-baseline gap-1.25 text-xs font-bold text-[#787180] [&_b]:text-base [&_b]:text-(--ink)"
 					>
-						<b>{me.progress + 1}</b><span>/</span>{party.deck.length}
+						<b>{activeProgress + 1}</b><span>/</span>{party.deck.length}
 					</div>
 				</div>
 				<div class="mb-5 h-0.75 overflow-hidden rounded-[99px] bg-white/7">
 					<span
 						class="block h-full rounded-[inherit] bg-[linear-gradient(90deg,var(--rose),var(--purple))] shadow-[0_0_12px_rgba(255,92,116,0.5)] transition-[width] duration-300 ease-in-out"
-						style={`width:${(me.progress / party.deck.length) * 100}%`}
+						style={`width:${(activeProgress / party.deck.length) * 100}%`}
 					></span>
 				</div>
+				{#if voteError}
+					<p class="-mt-2 mb-3 text-xs font-semibold text-[#ff8ca0]" role="alert">
+						{voteError}
+					</p>
+				{/if}
 
 				<div
 					class="relative mx-auto h-[min(58vh,560px)] min-h-107.5 w-[min(100%,380px)] perspective-[1000px] max-[380px]:min-h-97.5 min-[720px]:h-[min(62vh,575px)] [@media(max-height:760px)_and_(max-width:600px)]:h-[52vh] [@media(max-height:760px)_and_(max-width:600px)]:min-h-90"
@@ -754,13 +898,17 @@
 								onpointermove={pointerMove}
 								onpointerup={pointerUp}
 								onpointercancel={pointerCancel}
+								use:mobileSwipe
 								onkeydown={handleCardKey}
 							>
 								<div
-									class="relative size-full transition-transform duration-500 ease-[cubic-bezier(.2,.8,.2,1)] transform-3d motion-reduce:transition-none"
-									style={`transform: rotateY(${cardFlipped ? 180 : 0}deg);`}
+									class="relative size-full transition-transform duration-500 ease-[cubic-bezier(.2,.8,.2,1)] will-change-transform transform-3d motion-reduce:transition-none"
+									style={`-webkit-transform-style: preserve-3d; transform-style: preserve-3d; transform: rotateY(${cardFlipped ? 180 : 0}deg);`}
 								>
-									<div class="absolute inset-0 overflow-hidden backface-hidden">
+									<div
+										class="absolute inset-0 overflow-hidden backface-hidden"
+										style="-webkit-backface-visibility: hidden; backface-visibility: hidden; -webkit-transform: translateZ(0.1px); transform: translateZ(0.1px);"
+									>
 										<img
 											class="pointer-events-none size-full object-cover select-none"
 											src={posterSource(currentItem)}
@@ -838,6 +986,7 @@
 									</div>
 									<div
 										class="absolute inset-0 transform-[rotateY(180deg)] overflow-hidden bg-[linear-gradient(145deg,#201a2b,#100e15)] backface-hidden"
+										style="-webkit-backface-visibility: hidden; backface-visibility: hidden; -webkit-transform: rotateY(180deg) translateZ(0.1px); transform: rotateY(180deg) translateZ(0.1px);"
 									>
 										<img
 											class="pointer-events-none absolute inset-0 size-full scale-110 object-cover opacity-12 blur-md select-none"
@@ -932,15 +1081,20 @@
 				<div
 					class="mb-5 inline-flex items-center gap-2 text-[11px] font-extrabold tracking-[0.18em] text-[#d7d0e2] uppercase"
 				>
-					<span class="h-px w-6 bg-(--rose) shadow-[0_0_10px_var(--rose)]"></span> You’re all caught up
+					<span class="h-px w-6 bg-(--rose) shadow-[0_0_10px_var(--rose)]"></span>
+					{pendingVotes.length > 0 ? 'Saving your choices' : 'You’re all caught up'}
 				</div>
 				<h1
 					class="m-0 text-[clamp(42px,11vw,68px)] leading-[0.97] font-[850] tracking-[-0.065em] [&_em]:font-serif [&_em]:font-normal [&_em]:tracking-[-0.055em] [&_em]:text-(--rose)"
 				>
-					Cards down.<br /><em>Waiting on the crew.</em>
+					Cards down.<br /><em
+						>{pendingVotes.length > 0 ? 'Saving your picks.' : 'Waiting on the crew.'}</em
+					>
 				</h1>
 				<p class="mx-auto mt-5.5 max-w-127.5 text-[15px] leading-[1.65] text-(--muted)">
-					Your votes are locked in. This screen will update the moment everyone finishes.
+					{pendingVotes.length > 0
+						? 'You can stay here while the last choices sync in the background.'
+						: 'Your votes are locked in. This screen will update the moment everyone finishes.'}
 				</p>
 
 				<div
@@ -959,17 +1113,17 @@
 									>{player.id === playerId ? 'You' : player.name}</strong
 								>
 								<span class="text-[10px] text-(--muted)"
-									>{Math.min(player.progress, player.total)} of {player.total}</span
+									>{Math.min(displayedProgress(player), player.total)} of {player.total}</span
 								>
 							</div>
 							<i
 								class="grid h-7.5 min-w-9.5 place-items-center rounded-[10px] bg-white/5 text-[9px] font-extrabold text-[#918a98] not-italic"
-								class:bg-[rgba(66,232,193,0.09)]={player.progress >= player.total}
-								class:text-[var(--mint)]={player.progress >= player.total}
+								class:bg-[rgba(66,232,193,0.09)]={displayedProgress(player) >= player.total}
+								class:text-[var(--mint)]={displayedProgress(player) >= player.total}
 							>
-								{player.progress >= player.total
+								{displayedProgress(player) >= player.total
 									? '✓'
-									: `${Math.round((player.progress / player.total) * 100)}%`}
+									: `${Math.round((displayedProgress(player) / player.total) * 100)}%`}
 							</i>
 						</div>
 					{/each}

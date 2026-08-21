@@ -14,6 +14,9 @@ describe('auth pages', () => {
 
 		expect(body).toContain('novalidate=""');
 		expect(body).toContain('aria-invalid="false"');
+		expect(body).toContain('autocomplete="on"');
+		expect(body).toContain('autocomplete="username"');
+		expect(body).toContain('autocomplete="current-password"');
 		expect(body).not.toContain('Email is required.');
 		expect(body).not.toContain('Password is required.');
 	});
