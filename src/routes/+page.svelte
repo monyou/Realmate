@@ -41,6 +41,7 @@
 	let leaving = $state(false);
 	let dragStart = 0;
 	let pointerMoved = false;
+	let activeTouchId: number | null = null;
 	let previousCardKey = '';
 	let voteSendTimer: ReturnType<typeof setTimeout> | undefined;
 	let voteFallback: ReturnType<typeof setTimeout> | undefined;
@@ -147,6 +148,7 @@
 				dragging = false;
 				cardFlipped = false;
 				pointerMoved = false;
+				activeTouchId = null;
 				leaving = false;
 			}
 			party = response.state;
@@ -268,21 +270,20 @@
 		}, 1_200);
 	}
 
-	function pointerDown(event: PointerEvent) {
+	function beginDrag(clientX: number) {
 		if (leaving) return;
 		dragging = true;
 		pointerMoved = false;
-		dragStart = event.clientX - dragX;
-		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+		dragStart = clientX - dragX;
 	}
 
-	function pointerMove(event: PointerEvent) {
+	function moveDrag(clientX: number) {
 		if (!dragging || leaving) return;
-		dragX = event.clientX - dragStart;
+		dragX = clientX - dragStart;
 		if (Math.abs(dragX) > 6) pointerMoved = true;
 	}
 
-	function pointerUp() {
+	function finishDrag() {
 		if (!dragging) return;
 		dragging = false;
 		if (Math.abs(dragX) >= 88) decide(dragX > 0);
@@ -292,11 +293,96 @@
 		}
 	}
 
-	function pointerCancel() {
+	function cancelDrag() {
 		if (!dragging) return;
 		dragging = false;
 		dragX = 0;
 		pointerMoved = false;
+	}
+
+	function pointerDown(event: PointerEvent) {
+		// Mobile browsers also emit Touch Events. Handle touch through that API so
+		// installed iOS/Android web apps are not dependent on pointer capture.
+		if (event.pointerType === 'touch') return;
+		beginDrag(event.clientX);
+		try {
+			(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+		} catch {
+			// Capture is an enhancement; the drag still works while the pointer stays on the card.
+		}
+	}
+
+	function pointerMove(event: PointerEvent) {
+		if (event.pointerType === 'touch') return;
+		moveDrag(event.clientX);
+	}
+
+	function pointerUp(event: PointerEvent) {
+		if (event.pointerType === 'touch') return;
+		moveDrag(event.clientX);
+		finishDrag();
+	}
+
+	function pointerCancel(event: PointerEvent) {
+		if (event.pointerType === 'touch') return;
+		cancelDrag();
+	}
+
+	function findTouch(touches: TouchList, identifier: number) {
+		for (let index = 0; index < touches.length; index += 1) {
+			const touch = touches.item(index);
+			if (touch?.identifier === identifier) return touch;
+		}
+		return null;
+	}
+
+	function touchStart(event: TouchEvent) {
+		if (activeTouchId !== null || event.touches.length !== 1 || leaving) return;
+		const touch = event.changedTouches.item(0);
+		if (!touch) return;
+		event.preventDefault();
+		activeTouchId = touch.identifier;
+		beginDrag(touch.clientX);
+	}
+
+	function touchMove(event: TouchEvent) {
+		if (activeTouchId === null) return;
+		const touch = findTouch(event.changedTouches, activeTouchId);
+		if (!touch) return;
+		event.preventDefault();
+		moveDrag(touch.clientX);
+	}
+
+	function touchEnd(event: TouchEvent) {
+		if (activeTouchId === null) return;
+		const touch = findTouch(event.changedTouches, activeTouchId);
+		if (!touch) return;
+		moveDrag(touch.clientX);
+		activeTouchId = null;
+		finishDrag();
+	}
+
+	function touchCancel(event: TouchEvent) {
+		if (activeTouchId === null || !findTouch(event.changedTouches, activeTouchId)) return;
+		activeTouchId = null;
+		cancelDrag();
+	}
+
+	function mobileSwipe(node: HTMLElement) {
+		const nonPassive = { passive: false } as const;
+		node.addEventListener('touchstart', touchStart, nonPassive);
+		node.addEventListener('touchmove', touchMove, nonPassive);
+		node.addEventListener('touchend', touchEnd);
+		node.addEventListener('touchcancel', touchCancel);
+
+		return {
+			destroy() {
+				node.removeEventListener('touchstart', touchStart);
+				node.removeEventListener('touchmove', touchMove);
+				node.removeEventListener('touchend', touchEnd);
+				node.removeEventListener('touchcancel', touchCancel);
+			}
+		};
 	}
 
 	function handleCardKey(event: KeyboardEvent) {
@@ -754,6 +840,7 @@
 								onpointermove={pointerMove}
 								onpointerup={pointerUp}
 								onpointercancel={pointerCancel}
+								use:mobileSwipe
 								onkeydown={handleCardKey}
 							>
 								<div
