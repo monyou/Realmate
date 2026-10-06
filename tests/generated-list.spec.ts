@@ -1,4 +1,4 @@
-import type { GenerationCriteria } from '$lib/generated-list';
+import type { GenerationCriteria } from '#lib/generated-list.js';
 import {
 	TMDB_IMAGE_BASE_URL,
 	buildTmdbDiscoverUrl,
@@ -6,7 +6,7 @@ import {
 	makeGeneratedListName,
 	validateGeneratedItems,
 	validateGenerationCriteria
-} from '$lib/server/generated-list';
+} from '#lib/server/generated-list.js';
 import { describe, expect, it, vi } from 'vitest';
 
 const criteria: GenerationCriteria = {

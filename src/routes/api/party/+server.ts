@@ -1,7 +1,6 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { mutateParty, PartyNotFoundError, readParty } from '$lib/server/party-store';
-import { getPlayerIdentity } from '$lib/server/player-identity';
+import { mutateParty, PartyNotFoundError, readParty } from '#lib/server/party-store.js';
+import { getPlayerIdentity } from '#lib/server/player-identity.js';
 
 const noStore = { 'cache-control': 'no-store, max-age=0' };
 
@@ -14,10 +13,10 @@ type PartyAction =
 
 const failure = (error: unknown) => {
 	if (error instanceof PartyNotFoundError) {
-		return json({ message: error.message }, { status: 404, headers: noStore });
+		return Response.json({ message: error.message }, { status: 404, headers: noStore });
 	}
 	console.error('Party API request failed', error);
-	return json(
+	return Response.json(
 		{ message: 'The party room is unavailable. Please try again.' },
 		{ status: 503, headers: noStore }
 	);
@@ -26,7 +25,7 @@ const failure = (error: unknown) => {
 export const GET: RequestHandler = async ({ cookies, url }) => {
 	try {
 		const playerId = getPlayerIdentity(cookies, url.protocol === 'https:');
-		return json(
+		return Response.json(
 			{ playerId, state: await readParty(url.searchParams.get('room') ?? '') },
 			{ headers: noStore }
 		);
@@ -73,7 +72,7 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 			}
 		});
 
-		return json({ playerId, state }, { headers: noStore });
+		return Response.json({ playerId, state }, { headers: noStore });
 	} catch (error) {
 		return failure(error);
 	}

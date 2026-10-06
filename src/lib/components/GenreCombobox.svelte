@@ -4,7 +4,7 @@
 		genreSuggestions,
 		type MediaGenre,
 		validateGenreInput
-	} from '$lib/media-genres';
+	} from '#lib/media-genres.js';
 
 	type Props = {
 		id: string;

@@ -1,16 +1,15 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { enhance } from '$app/forms';
+	import { enhance, type SubmitFunction } from '$app/forms';
 	import type { ActionData, PageData } from './$types';
-	import type { SubmitFunction } from '@sveltejs/kit';
 	import { resolve } from '$app/paths';
 	import {
 		confirmPasswordValidationMessage,
 		emailValidationMessage,
 		registrationPasswordValidationMessage
-	} from '$lib/auth-validation';
-	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
-	import RealmateLogo from '$lib/components/RealmateLogo.svelte';
+	} from '#lib/auth-validation.js';
+	import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
+	import RealmateLogo from '#lib/components/RealmateLogo.svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	const restoreEmail = () => form?.email ?? '';
@@ -23,6 +22,7 @@
 	const passwordError = $derived(
 		validationAttempted ? registrationPasswordValidationMessage(password) : ''
 	);
+
 	const confirmPasswordError = $derived(
 		validationAttempted ? confirmPasswordValidationMessage(password, confirmPassword) : ''
 	);
@@ -77,14 +77,17 @@
 			<p class="mb-3 text-[10px] font-extrabold tracking-[0.2em] text-(--rose) uppercase">
 				Your watch space
 			</p>
+
 			<h1 class="m-0 text-[clamp(38px,9vw,52px)] leading-none font-[850] tracking-[-0.055em]">
 				Create account
 			</h1>
+
 			<p class="mt-4 text-sm leading-relaxed text-(--muted)">
 				Save private movie and series lists, then turn any combination into a matching party.
 			</p>
 
-			{#if !data.configured}<p
+			{#if !data.configured}
+				<p
 					class="mt-5 rounded-2xl border border-(--gold)/25 bg-(--gold)/8 px-4 py-3 text-xs leading-relaxed text-(--gold)"
 					role="alert"
 				>
@@ -98,7 +101,8 @@
 					role="status"
 				>
 					<p class="m-0 font-bold">{form.message}</p>
-					<a href={resolve('/login')} class="mt-4 inline-block font-extrabold text-white"
+
+					<a href={resolve('login')} class="mt-4 inline-block font-extrabold text-white"
 						>Go to login →</a
 					>
 				</div>
@@ -178,13 +182,17 @@
 					<button
 						type="submit"
 						class="mt-2 flex w-full cursor-pointer items-center justify-between rounded-2xl border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-4 font-extrabold text-[#160b10] shadow-[0_14px_34px_rgba(255,63,102,.24)] transition hover:-translate-y-0.5"
-						><span>Create my account</span><span aria-hidden="true">→</span></button
 					>
+						<span>Create my account</span>
+						<span aria-hidden="true">→</span>
+					</button>
 				</form>
 			{/if}
 
 			<p class="mt-6 text-center text-xs text-(--muted)">
-				Already registered? <a href={resolve('/login')} class="font-bold text-white">Log in</a>
+				Already registered?
+
+				<a href={resolve('login')} class="font-bold text-white">Log in</a>
 			</p>
 		</section>
 	</main>

@@ -58,12 +58,12 @@ describe('PWA configuration', () => {
 	});
 
 	it('keeps authenticated navigation network-first and only precaches static assets', () => {
-		const serviceWorker = readFileSync(resolve(projectRoot, 'src/service-worker.ts'), 'utf8');
+		const serviceWorker = readFileSync(resolve(projectRoot, 'src/service-worker/index.ts'), 'utf8');
 
 		expect(serviceWorker).toContain("event.request.mode === 'navigate'");
 		expect(serviceWorker).toContain('fetch(event.request).catch');
 		expect(serviceWorker).toContain('caches.match(offlinePage)');
-		expect(serviceWorker).toContain('assets.includes(url.pathname)');
+		expect(serviceWorker).toContain('assetPathnames.has(url.pathname)');
 		expect(serviceWorker).not.toContain("'/api/");
 	});
 });

@@ -1,13 +1,12 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { enhance } from '$app/forms';
+	import { enhance, type SubmitFunction } from '$app/forms';
 	import { resolve } from '$app/paths';
-	import type { SubmitFunction } from '@sveltejs/kit';
-	import GenreCombobox from '$lib/components/GenreCombobox.svelte';
-	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
-	import RealmateLogo from '$lib/components/RealmateLogo.svelte';
-	import { MEDIA_GENRES, validateGenreInput } from '$lib/media-genres';
-	import { MAX_MEDIA_PLOT_LENGTH } from '$lib/media-plot';
+	import GenreCombobox from '#lib/components/GenreCombobox.svelte';
+	import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
+	import RealmateLogo from '#lib/components/RealmateLogo.svelte';
+	import { MEDIA_GENRES, validateGenreInput } from '#lib/media-genres.js';
+	import { MAX_MEDIA_PLOT_LENGTH } from '#lib/media-plot.js';
 
 	type DraftItem = {
 		key: string;
@@ -123,6 +122,7 @@
 					.map((genre) => genre.trim())
 					.filter(Boolean);
 	};
+
 	const hasValidYear = (item: DraftItem) =>
 		Number.isInteger(item.year) && Number(item.year) >= 1888 && Number(item.year) <= 2100;
 	const hasValidRating = (item: DraftItem) =>
@@ -158,6 +158,7 @@
 		(showListErrors && !hasValidListDetails()) ||
 			items.some((item) => item.showErrors && !isComplete(item))
 	);
+
 	const payload = $derived(
 		JSON.stringify(
 			items.map((item) => ({
@@ -219,8 +220,10 @@
 	></div>
 	<header class="border-b border-white/7 px-5 py-5">
 		<div class="mx-auto flex w-[min(100%,1000px)] items-center justify-between">
-			<RealmateLogo /><a
-				href={resolve('/profile')}
+			<RealmateLogo />
+
+			<a
+				href={resolve('profile')}
 				class="text-xs font-bold text-(--muted) no-underline hover:text-white">← Back to lists</a
 			>
 		</div>
@@ -331,10 +334,8 @@
 									stroke-width="2"
 									stroke-linecap="round"
 									stroke-linejoin="round"
-									aria-hidden="true"
+									aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg
 								>
-									<path d="m6 9 6 6 6-6" />
-								</svg>
 							</div>
 						</summary>
 						<div class="border-t border-white/7 p-5 min-[700px]:p-7">
@@ -385,11 +386,14 @@
 										!item.type
 											? 'border-[#ff5c74]/60'
 											: 'border-white/12'}"
-										><option value="" disabled>Select type</option><option value="movie"
-											>Movie</option
-										><option value="series">Series</option></select
 									>
-									{#if item.showErrors && !item.type}<small
+										<option value="" disabled>Select type</option>
+										<option value="movie">Movie</option>
+										<option value="series">Series</option>
+									</select>
+
+									{#if item.showErrors && !item.type}
+										<small
 											id={`type-error-${item.key}`}
 											class="mt-1.5 block text-[10px] text-[#ff8ca0]">Type is required.</small
 										>{/if}
@@ -558,19 +562,16 @@
 				</p>{/if}
 			<div class="flex flex-col-reverse gap-3 min-[600px]:flex-row min-[600px]:justify-end">
 				<a
-					href={resolve('/profile')}
+					href={resolve('profile')}
 					class="rounded-2xl border border-white/10 px-5 py-3.5 text-center text-sm font-bold text-white no-underline"
 					>Cancel</a
 				><button
 					type="submit"
 					disabled={Boolean(form?.conflict)}
 					class="cursor-pointer rounded-2xl border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-6 py-3.5 text-sm font-extrabold text-[#160b10] shadow-[0_12px_30px_rgba(255,63,102,.22)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
-					>{form?.conflict
-						? 'Refresh required'
-						: mode === 'create'
-							? 'Create list'
-							: 'Save changes'} →</button
 				>
+					{form?.conflict ? 'Refresh required' : mode === 'create' ? 'Create list' : 'Save changes'} →
+				</button>
 			</div>
 		</form>
 	</main>

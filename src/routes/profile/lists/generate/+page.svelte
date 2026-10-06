@@ -1,16 +1,15 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance, type SubmitFunction } from '$app/forms';
 	import { resolve } from '$app/paths';
-	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
-	import RealmateLogo from '$lib/components/RealmateLogo.svelte';
+	import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
+	import RealmateLogo from '#lib/components/RealmateLogo.svelte';
 	import {
 		MAX_FILTER_GENRES,
 		MAX_GENERATED_RESULTS,
 		type FilterOperator,
 		type GeneratedMediaType
-	} from '$lib/generated-list';
-	import { MEDIA_GENRES, type MediaGenre } from '$lib/media-genres';
-	import type { SubmitFunction } from '@sveltejs/kit';
+	} from '#lib/generated-list.js';
+	import { MEDIA_GENRES, type MediaGenre } from '#lib/media-genres.js';
 	import type { ActionData } from './$types';
 
 	let { form }: { form: ActionData } = $props();
@@ -115,7 +114,7 @@
 		<div class="mx-auto flex w-[min(100%,1040px)] items-center justify-between">
 			<RealmateLogo />
 			<a
-				href={resolve('/profile')}
+				href={resolve('profile')}
 				class="text-xs font-bold text-(--muted) no-underline transition hover:text-white"
 				>← Back to lists</a
 			>

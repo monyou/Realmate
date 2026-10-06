@@ -1,5 +1,5 @@
-import { env } from '$env/dynamic/private';
-import type { PartyState, SourceMedia } from '$lib/types';
+import { UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN } from '$app/env/private';
+import type { PartyState, SourceMedia } from '#lib/types.js';
 import { Redis } from '@upstash/redis';
 import { PartyEngine, type PersistedPartyEngine } from './party-engine';
 
@@ -29,8 +29,8 @@ export const isRoomId = (value: string | null | undefined): value is string =>
 	typeof value === 'string' && roomIdPattern.test(value);
 
 const getRedis = () => {
-	const url = env.UPSTASH_REDIS_REST_URL;
-	const token = env.UPSTASH_REDIS_REST_TOKEN;
+	const url = UPSTASH_REDIS_REST_URL;
+	const token = UPSTASH_REDIS_REST_TOKEN;
 	if (!url || !token) {
 		throw new Error('Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN');
 	}

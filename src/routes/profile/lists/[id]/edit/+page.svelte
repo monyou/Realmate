@@ -1,5 +1,5 @@
 <script lang="ts">
-	import MovieListEditor from '$lib/components/MovieListEditor.svelte';
+	import MovieListEditor from '#lib/components/MovieListEditor.svelte';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();

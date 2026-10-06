@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateMovieListForm } from '$lib/server/movie-list-form';
+import { validateMovieListForm } from '#lib/server/movie-list-form.js';
 
 const makeForm = (items: unknown, name = 'Weekend picks') => {
 	const form = new FormData();

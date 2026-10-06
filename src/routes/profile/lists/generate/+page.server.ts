@@ -1,10 +1,10 @@
-import { requireSupabase, requireUser } from '$lib/server/auth';
-import { env } from '$env/dynamic/private';
+import { requireSupabase, requireUser } from '#lib/server/auth.js';
+import { TMDB_API_READ_ACCESS_TOKEN } from '$app/env/private';
 import {
 	ListGenerationError,
 	generateListFromTmdb,
 	validateGenerationCriteria
-} from '$lib/server/generated-list';
+} from '#lib/server/generated-list.js';
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -24,10 +24,7 @@ export const actions: Actions = {
 
 		let generated: Awaited<ReturnType<typeof generateListFromTmdb>>;
 		try {
-			generated = await generateListFromTmdb(
-				validated.criteria,
-				env.TMDB_API_READ_ACCESS_TOKEN ?? ''
-			);
+			generated = await generateListFromTmdb(validated.criteria, TMDB_API_READ_ACCESS_TOKEN ?? '');
 		} catch (error) {
 			if (error instanceof ListGenerationError) {
 				return fail(error.status, { message: error.message, values: validated.values });

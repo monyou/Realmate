@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_MEDIA_PLOT_LENGTH, normalizeMediaPlot, truncateMediaPlot } from '$lib/media-plot';
+import { MAX_MEDIA_PLOT_LENGTH, normalizeMediaPlot, truncateMediaPlot } from '#lib/media-plot.js';
 
 describe('media plot', () => {
 	it('trims manually entered plots without changing their content', () => {

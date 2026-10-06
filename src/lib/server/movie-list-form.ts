@@ -1,5 +1,5 @@
-import { PartyEngine } from '$lib/server/party-engine';
-import type { SourceMedia, Json } from '$lib/types';
+import { PartyEngine } from '#lib/server/party-engine.js';
+import type { SourceMedia, Json } from '#lib/types.js';
 
 export type MovieListFormValues = {
 	name: string;

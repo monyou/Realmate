@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { requireSupabase, requireUser } from '$lib/server/auth';
-import { validateMovieListForm } from '$lib/server/movie-list-form';
+import { requireSupabase, requireUser } from '#lib/server/auth.js';
+import { validateMovieListForm } from '#lib/server/movie-list-form.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	await requireUser(locals);

@@ -1,5 +1,5 @@
-import type { MediaGenre } from '$lib/media-genres';
-import type { MediaKind } from '$lib/types';
+import type { MediaGenre } from '#lib/media-genres.js';
+import type { MediaKind } from '#lib/types.js';
 
 export const MAX_GENERATED_RESULTS = 30;
 export const MAX_FILTER_GENRES = 3;

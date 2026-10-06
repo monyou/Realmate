@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'svelte/server';
-import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
+import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
 
 describe('LoadingOverlay', () => {
 	it('renders an accessible blocking loader while work is in progress', () => {
