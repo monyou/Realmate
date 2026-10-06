@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'svelte/server';
-import MovieListEditor from '$lib/components/MovieListEditor.svelte';
+import MovieListEditor from '#lib/components/MovieListEditor.svelte';
 
 describe('MovieListEditor', () => {
 	it('starts a new list expanded without showing validation feedback', () => {

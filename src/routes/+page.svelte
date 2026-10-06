@@ -1,15 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { asset, resolve } from '$app/paths';
-	import Confetti from '$lib/components/Confetti.svelte';
-	import RealmateLogo from '$lib/components/RealmateLogo.svelte';
+	import Confetti from '#lib/components/Confetti.svelte';
+	import RealmateLogo from '#lib/components/RealmateLogo.svelte';
 	import {
 		optimisticPlayerProgress,
 		voteWasAcknowledged,
 		type QueuedVote
-	} from '$lib/optimistic-votes';
-	import { normalizeRoomCode, partyRoomPath } from '$lib/party-room';
-	import type { MediaItem, PartyState } from '$lib/types';
+	} from '#lib/optimistic-votes.js';
+	import { normalizeRoomCode, partyRoomPath } from '#lib/party-room.js';
+	import type { MediaItem, PartyState } from '#lib/types.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -24,10 +24,10 @@
 		'bg-[linear-gradient(145deg,#59b8ff,#3154cc)]',
 		'bg-[linear-gradient(145deg,#e879f9,#9b3fc2)]'
 	];
+
 	const noiseBackground =
 		"url(\"data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E\")";
-	const defaultPoster = asset('/assets/default_poster.jpeg');
-
+	const defaultPoster = asset('assets/default_poster.jpeg');
 	let party = $state<PartyState | null>(null);
 	let roomId = $derived(data.roomId);
 	let roomCode = $state('');
@@ -59,7 +59,12 @@
 	type PartyAction =
 		| { type: 'hello'; name: string }
 		| { type: 'start' }
-		| { type: 'vote'; roundId: string; itemId: string; liked: boolean }
+		| {
+				type: 'vote';
+				roundId: string;
+				itemId: string;
+				liked: boolean;
+		  }
 		| { type: 'again'; roundId: string }
 		| { type: 'leave' };
 
@@ -560,6 +565,7 @@
 				>
 					Stop debating.<br /><em>Start matching.</em>
 				</h1>
+
 				<p class="mx-auto mt-6 max-w-155 text-[15px] leading-[1.7] text-(--muted)">
 					Save your movie and series lists, invite your people, and swipe together. Realmate reveals
 					the first title everyone wants to watch.
@@ -568,18 +574,18 @@
 				<div class="mt-8 flex flex-row items-center justify-center gap-3">
 					{#if data.user}
 						<a
-							href={resolve('/profile')}
+							href={resolve('profile')}
 							class="inline-flex min-w-44 items-center justify-between gap-6 rounded-2xl bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-4 text-sm font-extrabold text-[#160b10] no-underline shadow-[0_14px_34px_rgba(255,63,102,.24)] transition hover:-translate-y-0.5"
 							><span>Open your lists</span><span>→</span></a
 						>
 					{:else}
 						<a
-							href={resolve('/login')}
+							href={resolve('login')}
 							class="inline-flex min-w-38 items-center justify-between gap-6 rounded-2xl bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-4 text-sm font-extrabold text-[#160b10] no-underline shadow-[0_14px_34px_rgba(255,63,102,.24)] transition hover:-translate-y-0.5"
 							><span>Log in</span><span>→</span></a
 						>
 						<a
-							href={resolve('/register')}
+							href={resolve('register')}
 							class="rounded-2xl border border-white/12 bg-white/5 px-5 py-4 text-sm font-extrabold text-white no-underline transition hover:bg-white/9"
 							>Create account</a
 						>
@@ -668,9 +674,11 @@
 				>
 					!
 				</div>
+
 				<h1 class="m-0 text-[clamp(38px,10vw,58px)] leading-none font-[850] tracking-[-0.06em]">
 					{roomMissing ? 'No such party exists' : 'Party unavailable'}
 				</h1>
+
 				<p class="mx-auto mt-5 max-w-105 text-[15px] leading-[1.65] text-(--muted)" role="alert">
 					{roomMissing ? 'This party room does not exist or is no longer available.' : joinError}
 				</p>
@@ -938,6 +946,7 @@
 										>
 											YES!
 										</div>
+
 										<div class="absolute right-0 bottom-0 left-0 p-6.25 pt-7 text-left">
 											<div class="mb-2.25 flex items-center justify-between gap-3">
 												<div class="flex items-center gap-2.25 text-xs font-bold text-[#d2cad8]">

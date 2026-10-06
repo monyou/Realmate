@@ -1,10 +1,10 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { requireSupabase, requireUser } from '$lib/server/auth';
-import { PartyEngine } from '$lib/server/party-engine';
-import { createParty } from '$lib/server/party-store';
-import { getPlayerIdentity } from '$lib/server/player-identity';
-import type { SourceMedia } from '$lib/types';
+import { requireSupabase, requireUser } from '#lib/server/auth.js';
+import { PartyEngine } from '#lib/server/party-engine.js';
+import { createParty } from '#lib/server/party-store.js';
+import { getPlayerIdentity } from '#lib/server/player-identity.js';
+import type { SourceMedia } from '#lib/types.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = await requireUser(locals);

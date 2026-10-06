@@ -5,11 +5,11 @@ import {
 	type GeneratedMediaType,
 	type GenerationCriteria,
 	type GenerationCriteriaValues
-} from '$lib/generated-list';
-import { MEDIA_GENRES, validateMediaGenres, type MediaGenre } from '$lib/media-genres';
-import { truncateMediaPlot } from '$lib/media-plot';
-import { validateMovieListForm } from '$lib/server/movie-list-form';
-import type { Json, MediaKind, SourceMedia } from '$lib/types';
+} from '#lib/generated-list.js';
+import { MEDIA_GENRES, validateMediaGenres, type MediaGenre } from '#lib/media-genres.js';
+import { truncateMediaPlot } from '#lib/media-plot.js';
+import { validateMovieListForm } from '#lib/server/movie-list-form.js';
+import type { Json, MediaKind, SourceMedia } from '#lib/types.js';
 
 export const TMDB_API_BASE_URL = 'https://api.themoviedb.org/3';
 export const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';

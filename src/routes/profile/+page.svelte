@@ -1,12 +1,11 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance, type SubmitFunction } from '$app/forms';
 	import type { ActionData, PageData } from './$types';
-	import type { SubmitFunction } from '@sveltejs/kit';
 	import { resolve } from '$app/paths';
-	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
-	import RealmateLogo from '$lib/components/RealmateLogo.svelte';
-	import ShareListDialog from '$lib/components/ShareListDialog.svelte';
-	import { selectionAfterDelete } from '$lib/list-selection';
+	import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
+	import RealmateLogo from '#lib/components/RealmateLogo.svelte';
+	import ShareListDialog from '#lib/components/ShareListDialog.svelte';
+	import { selectionAfterDelete } from '#lib/list-selection.js';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	let selected = $state<string[]>([]);
@@ -113,12 +112,15 @@
 			</div>
 			<div class="flex flex-col gap-3 min-[430px]:flex-row">
 				<a
-					href={resolve('/profile/lists/generate')}
+					href={resolve('profile/lists/generate')}
 					class="inline-flex items-center justify-center gap-2 rounded-2xl border border-(--purple)/35 bg-(--purple)/10 px-5 py-3.5 text-sm font-extrabold text-[#c8beff] no-underline shadow-[0_12px_28px_rgba(124,92,255,.1)] transition hover:-translate-y-0.5 hover:border-(--purple)/60 hover:bg-(--purple)/16"
-					><span class="text-base" aria-hidden="true">✦</span> Generate list</a
 				>
+					<span class="text-base" aria-hidden="true">✦</span>
+					Generate list
+				</a>
+
 				<a
-					href={resolve('/profile/lists/new')}
+					href={resolve('profile/lists/new')}
 					class="inline-flex items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-3.5 text-sm font-extrabold text-[#160b10] no-underline shadow-[0_12px_28px_rgba(255,63,102,.2)] transition hover:-translate-y-0.5"
 					><span class="text-lg">+</span> New list</a
 				>
@@ -147,7 +149,7 @@
 						Create a list and add the movies or series you want your group to swipe through.
 					</p>
 					<a
-						href={resolve('/profile/lists/new')}
+						href={resolve('profile/lists/new')}
 						class="mt-6 inline-block rounded-xl border border-white/12 bg-white/7 px-4 py-3 text-sm font-bold text-white no-underline"
 						>Create your first list</a
 					>
@@ -212,10 +214,10 @@
 										aria-label={`${list.name} is shared`}
 										role="img"
 									>
-										<circle cx="18" cy="5" r="3" />
-										<circle cx="6" cy="12" r="3" />
-										<circle cx="18" cy="19" r="3" />
-										<path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4" />
+										<circle cx="18" cy="5" r="3"></circle>
+										<circle cx="6" cy="12" r="3"></circle>
+										<circle cx="18" cy="19" r="3"></circle>
+										<path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"></path>
 									</svg>
 								{/if}
 							</span>
@@ -254,17 +256,25 @@
 							<span
 								class="hidden min-w-0 min-[720px]:block"
 								title={list.description ? `${list.name} — ${list.description}` : list.name}
-								><strong class="block truncate text-sm text-white">{list.name}</strong
-								>{#if list.description}<small class="mt-1 block truncate text-[11px] text-(--muted)"
+							>
+								<strong class="block truncate text-sm text-white">{list.name}</strong>
+
+								{#if list.description}
+									<small class="mt-1 block truncate text-[11px] text-(--muted)"
 										>{list.description}</small
-									>{/if}</span
-							>
-							<span class="text-xs font-bold text-[#d7d0e2]"
-								>{list.itemCount}<span class="ml-1 min-[720px]:hidden">titles</span></span
-							>
+									>
+								{/if}
+							</span>
+
+							<span class="text-xs font-bold text-[#d7d0e2]">
+								{list.itemCount}
+								<span class="ml-1 min-[720px]:hidden">titles</span>
+							</span>
+
 							<span class="hidden text-xs text-(--muted) min-[720px]:block"
 								>{formatDate(list.updatedAt)}</span
 							>
+
 							<div class="flex justify-end gap-1">
 								<a
 									href={resolve('/profile/lists/[id]/edit', { id: list.id })}
@@ -282,8 +292,8 @@
 										stroke-linejoin="round"
 										aria-hidden="true"
 									>
-										<path d="M12 20h9" />
-										<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+										<path d="M12 20h9"></path>
+										<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
 									</svg>
 								</a>
 								{#if list.isOwner}
@@ -304,10 +314,10 @@
 											stroke-linejoin="round"
 											aria-hidden="true"
 										>
-											<circle cx="18" cy="5" r="3" />
-											<circle cx="6" cy="12" r="3" />
-											<circle cx="18" cy="19" r="3" />
-											<path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4" />
+											<circle cx="18" cy="5" r="3"></circle>
+											<circle cx="6" cy="12" r="3"></circle>
+											<circle cx="18" cy="19" r="3"></circle>
+											<path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"></path>
 										</svg>
 									</button>
 									<button
@@ -327,7 +337,7 @@
 											stroke-linejoin="round"
 											aria-hidden="true"
 										>
-											<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5" />
+											<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"></path>
 										</svg>
 									</button>
 								{/if}

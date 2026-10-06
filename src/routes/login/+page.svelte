@@ -1,12 +1,11 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { enhance } from '$app/forms';
+	import { enhance, type SubmitFunction } from '$app/forms';
 	import type { ActionData, PageData } from './$types';
-	import type { SubmitFunction } from '@sveltejs/kit';
 	import { resolve } from '$app/paths';
-	import { emailValidationMessage, loginPasswordValidationMessage } from '$lib/auth-validation';
-	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
-	import RealmateLogo from '$lib/components/RealmateLogo.svelte';
+	import { emailValidationMessage, loginPasswordValidationMessage } from '#lib/auth-validation.js';
+	import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
+	import RealmateLogo from '#lib/components/RealmateLogo.svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	const restoreEmail = () => form?.email ?? '';
@@ -65,9 +64,11 @@
 			<p class="mb-3 text-[10px] font-extrabold tracking-[0.2em] text-(--rose) uppercase">
 				Welcome back
 			</p>
+
 			<h1 class="m-0 text-[clamp(38px,9vw,52px)] leading-none font-[850] tracking-[-0.055em]">
 				Log in
 			</h1>
+
 			<p class="mt-4 text-sm leading-relaxed text-(--muted)">
 				Open your saved lists and get everyone matching.
 			</p>
@@ -153,7 +154,9 @@
 			</form>
 
 			<p class="mt-6 text-center text-xs text-(--muted)">
-				New here? <a href={resolve('/register')} class="font-bold text-white">Create an account</a>
+				New here?
+
+				<a href={resolve('register')} class="font-bold text-white">Create an account</a>
 			</p>
 		</section>
 	</main>

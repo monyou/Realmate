@@ -5,7 +5,7 @@ const auth = vi.hoisted(() => ({
 	requireSupabase: vi.fn()
 }));
 
-vi.mock('$lib/server/auth', () => auth);
+vi.mock('#lib/server/auth.js', () => auth);
 
 import { actions as editActions } from '../src/routes/profile/lists/[id]/edit/+page.server';
 import { actions as profileActions } from '../src/routes/profile/+page.server';

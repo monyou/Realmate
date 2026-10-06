@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeRoomCode, partyRoomPath } from '$lib/party-room';
+import { normalizeRoomCode, partyRoomPath } from '#lib/party-room.js';
 
 describe('party room codes', () => {
 	it('normalizes copied room codes', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'svelte/server';
-import { selectionAfterDelete } from '$lib/list-selection';
+import { selectionAfterDelete } from '#lib/list-selection.js';
 import ProfilePage from '../src/routes/profile/+page.svelte';
 
 describe('profile list table', () => {

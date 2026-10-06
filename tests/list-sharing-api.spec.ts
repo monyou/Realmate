@@ -5,7 +5,7 @@ const auth = vi.hoisted(() => ({
 	requireSupabase: vi.fn()
 }));
 
-vi.mock('$lib/server/auth', () => auth);
+vi.mock('#lib/server/auth.js', () => auth);
 
 import { GET, PUT } from '../src/routes/api/lists/[id]/shares/+server';
 

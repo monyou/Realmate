@@ -5,7 +5,7 @@ import {
 	MEDIA_GENRES,
 	validateGenreInput,
 	validateMediaGenres
-} from '$lib/media-genres';
+} from '#lib/media-genres.js';
 
 describe('media genre validation', () => {
 	it('uses the canonical IMDb genre names', () => {

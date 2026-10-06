@@ -9,11 +9,11 @@ const generatedList = vi.hoisted(() => ({
 	generateListFromTmdb: vi.fn()
 }));
 
-vi.mock('$env/dynamic/private', () => ({
-	env: { TMDB_API_READ_ACCESS_TOKEN: 'server-only-tmdb-token' }
+vi.mock('$app/env/private', () => ({
+	TMDB_API_READ_ACCESS_TOKEN: 'server-only-tmdb-token'
 }));
-vi.mock('$lib/server/auth', () => auth);
-vi.mock('$lib/server/generated-list', () => ({
+vi.mock('#lib/server/auth.js', () => auth);
+vi.mock('#lib/server/generated-list.js', () => ({
 	ListGenerationError: class ListGenerationError extends Error {},
 	validateGenerationCriteria: generatedList.validateGenerationCriteria,
 	generateListFromTmdb: generatedList.generateListFromTmdb

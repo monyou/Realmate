@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { roomTtlSeconds } from '$lib/server/party-store';
+import { roomTtlSeconds } from '#lib/server/party-store.js';
 
 describe('roomTtlSeconds', () => {
 	it('keeps active rooms for 24 hours after their last heartbeat', () => {

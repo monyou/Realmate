@@ -2,7 +2,7 @@
 
 Realmate helps a group choose a movie or series together. Account owners build private watch lists, select one or more lists, and open a shareable room. Everyone swipes through the same deck until the first unanimous match.
 
-Built with SvelteKit 2, Svelte 5, TypeScript, Tailwind CSS 4, Supabase Auth/Postgres, Upstash Redis, Vercel, and Bun.
+Built with SvelteKit 3, Svelte 5, TypeScript, Tailwind CSS 4, Supabase Auth/Postgres, Upstash Redis, Vercel, and Bun.
 
 ## Architecture
 
@@ -24,6 +24,8 @@ Built with SvelteKit 2, Svelte 5, TypeScript, Tailwind CSS 4, Supabase Auth/Post
 7. Guests can open Realmate, choose **Join party**, and enter the code without creating an account. At least two connected people are required to start swiping.
 
 ## Local setup
+
+Use Node.js 22.17 or later within the Node.js 22 release line, and Bun 1.3.14.
 
 Install dependencies and create the local environment file:
 

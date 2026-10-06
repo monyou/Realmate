@@ -4,7 +4,7 @@ import {
 	emailValidationMessage,
 	loginPasswordValidationMessage,
 	registrationPasswordValidationMessage
-} from '$lib/auth-validation';
+} from '#lib/auth-validation.js';
 
 describe('auth validation', () => {
 	it.each([

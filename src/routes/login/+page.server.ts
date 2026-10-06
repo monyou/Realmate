@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { getCurrentUser, requireSupabase } from '$lib/server/auth';
+import { getCurrentUser, requireSupabase } from '#lib/server/auth.js';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
 	if (await getCurrentUser(locals)) redirect(303, '/profile');

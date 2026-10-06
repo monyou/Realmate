@@ -1,5 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { getCurrentUser } from '$lib/server/auth';
+import { getCurrentUser } from '#lib/server/auth.js';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const user = await getCurrentUser(locals);

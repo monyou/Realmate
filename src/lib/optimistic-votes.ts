@@ -1,4 +1,4 @@
-import type { PartyState } from '$lib/types';
+import type { PartyState } from '#lib/types.js';
 
 export type QueuedVote = {
 	roundId: string;

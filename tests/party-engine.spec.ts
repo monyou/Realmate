@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { PartyEngine } from '$lib/server/party-engine';
-import type { MediaItem } from '$lib/types';
+import { PartyEngine } from '#lib/server/party-engine.js';
+import type { MediaItem } from '#lib/types.js';
 
 const items: Omit<MediaItem, 'id'>[] = [
 	{

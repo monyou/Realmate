@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
-	import { emailValidationMessage } from '$lib/auth-validation';
+	import { refreshAll } from '$app/navigation';
+	import { emailValidationMessage } from '#lib/auth-validation.js';
 
 	type SharedList = { id: string; name: string };
 	type EmailRow = {
@@ -78,7 +78,7 @@
 			});
 			const result = (await response.json()) as { emails?: string[]; message?: string };
 			if (!response.ok) throw new Error(result.message || 'Sharing settings could not be saved.');
-			await invalidateAll();
+			await refreshAll();
 			onClose();
 		} catch (error) {
 			message = error instanceof Error ? error.message : 'Sharing settings could not be saved.';
