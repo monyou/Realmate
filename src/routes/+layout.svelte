@@ -7,5 +7,7 @@
 	const loading = $derived(navigating.to !== null);
 </script>
 
-{@render children()}
+<div class="app-shell">
+	{@render children()}
+</div>
 <LoadingOverlay visible={loading} />
