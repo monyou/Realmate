@@ -21,12 +21,13 @@ jobs:
       - name: Create releases from PRs
         uses: actions/github-script@v9
         with:
+          github-token: ${{ secrets.RELEASE_TOKEN }}
           script: |
             const { owner, repo } = context.repo;
 
             // Set to your GitHub username to include
             // only PRs authored by you. Null = everyone.
-            const author = null;
+            const author = 'monyou';
 
             let prs;
 
@@ -114,7 +115,8 @@ jobs:
                 name: pr.title,
                 body,
                 draft: false,
-                prerelease: false
+                prerelease: false,
+                make_latest: context.eventName === 'workflow_dispatch' ? 'false' : 'true'
               });
 
               core.info(`Created release: ${pr.title}`);
