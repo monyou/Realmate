@@ -3,7 +3,7 @@ name: Publish PR Release Notes
 on:
   pull_request:
     types: [closed]
-    branches: [master]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -31,13 +31,13 @@ jobs:
             let prs;
 
             if (context.eventName === 'workflow_dispatch') {
-              // Fetch all historical closed PRs to master.
+              // Fetch all historical closed PRs to main.
               const all = await github.paginate(
                 github.rest.pulls.list,
                 {
                   owner,
                   repo,
-                  base: 'master',
+                  base: 'main',
                   state: 'closed',
                   per_page: 100
                 }
