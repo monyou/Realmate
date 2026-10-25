@@ -97,7 +97,7 @@
 	</header>
 
 	<main class="mx-auto w-[min(100%,1120px)] px-5 py-10 min-[760px]:py-15">
-		<div class="flex flex-col justify-between gap-6 min-[700px]:flex-row min-[700px]:items-end">
+		<div class="flex flex-col justify-between gap-6 min-[950px]:flex-row min-[950px]:items-end">
 			<div>
 				<p class="mb-3 text-[10px] font-extrabold tracking-[0.2em] text-(--rose) uppercase">
 					Your profile

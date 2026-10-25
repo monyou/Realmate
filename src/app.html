@@ -2,7 +2,7 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<meta name="text-scale" content="scale" />
 		<meta name="theme-color" content="#0b0910" />
 		<meta name="mobile-web-app-capable" content="yes" />
@@ -16,6 +16,70 @@
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
+		<!-- This prompt lives outside the hydrated app so it works before the app bundle loads. -->
+		<dialog
+			id="device-dialog"
+			aria-labelledby="device-dialog-title"
+			aria-describedby="device-dialog-description"
+			class="m-auto box-border w-[min(90vw,400px)] rounded-[26px] border border-white/12 bg-[#14111a] p-6 text-(--ink) shadow-[0_30px_100px_rgba(0,0,0,.65)] backdrop:bg-black/75"
+		>
+			<h2 id="device-dialog-title" class="text-xl font-extrabold">Are you using an iPhone Duo?</h2>
+			<p id="device-dialog-description" class="mt-3 text-sm text-(--muted)">
+				Choose Yes to leave room for its system icons when you fold or rotate your phone.
+			</p>
+			<div class="mt-6 flex gap-3">
+				<button
+					type="button"
+					data-duo-answer="no"
+					class="flex-1 rounded-xl border border-white/15 px-4 py-3 font-bold"
+				>
+					No
+				</button>
+				<button
+					type="button"
+					data-duo-answer="yes"
+					class="flex-1 rounded-xl bg-(--purple) px-4 py-3 font-bold text-white"
+				>
+					Yes
+				</button>
+			</div>
+		</dialog>
+		<script nonce="%sveltekit.nonce%">
+			(() => {
+				const key = 'realmate-iphone-duo';
+				const dialog = document.getElementById('device-dialog');
+				const standalone = matchMedia('(display-mode: standalone)');
+				let answer = null;
+				try {
+					answer = localStorage.getItem(key);
+				} catch {
+					// Keep the choice in memory if storage is unavailable.
+				}
+				function apply() {
+					const installed = standalone.matches || navigator.standalone === true;
+					document.documentElement.classList.toggle('duo-layout', installed && answer === 'yes');
+					if (installed && answer !== 'yes' && answer !== 'no') {
+						if (!dialog.open) dialog.showModal();
+					} else {
+						dialog.close();
+					}
+				}
+				dialog.addEventListener('cancel', (event) => event.preventDefault());
+				for (const button of dialog.querySelectorAll('[data-duo-answer]')) {
+					button.addEventListener('click', () => {
+						answer = button.dataset.duoAnswer;
+						try {
+							localStorage.setItem(key, answer);
+						} catch {
+							// Ask again next launch if saving is blocked.
+						}
+						apply();
+					});
+				}
+				standalone.addEventListener('change', apply);
+				apply();
+			})();
+		</script>
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>
