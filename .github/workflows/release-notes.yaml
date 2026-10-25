@@ -1,0 +1,121 @@
+name: Publish PR Release Notes
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  publish-releases:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create releases from PRs
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+
+            // Set to your GitHub username to include
+            // only PRs authored by you. Null = everyone.
+            const author = null;
+
+            let prs;
+
+            if (context.eventName === 'workflow_dispatch') {
+              // Fetch all historical closed PRs to master.
+              const all = await github.paginate(
+                github.rest.pulls.list,
+                {
+                  owner,
+                  repo,
+                  base: 'master',
+                  state: 'closed',
+                  per_page: 100
+                }
+              );
+
+              prs = all
+                .filter(pr => pr.merged_at)
+                .sort((a, b) =>
+                  Date.parse(a.merged_at) -
+                  Date.parse(b.merged_at)
+                );
+            } else {
+              // Process just the newly merged PR.
+              prs = [context.payload.pull_request];
+            }
+
+            for (const pr of prs) {
+              if (author && pr.user.login !== author) {
+                continue;
+              }
+
+              const tag = `pr-${pr.number}`;
+
+              // Don't create duplicate releases.
+              try {
+                await github.rest.repos.getReleaseByTag({
+                  owner,
+                  repo,
+                  tag
+                });
+                core.info(`Release ${tag} already exists`);
+                continue;
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+
+              // The PR commits endpoint has a 250 limit.
+              if (pr.commits > 250) {
+                throw new Error(
+                  `PR #${pr.number} exceeds 250 commits`
+                );
+              }
+
+              const commits = await github.paginate(
+                github.rest.pulls.listCommits,
+                {
+                  owner,
+                  repo,
+                  pull_number: pr.number,
+                  per_page: 100
+                }
+              );
+
+              // Preserve complete commit messages.
+              const changes = commits
+                .map(({ commit }) =>
+                  `- ${commit.message.trim()
+                    .replace(/\r?\n/g, '\n  ')}`
+                )
+                .join('\n');
+
+              const body = [
+                '## Changes',
+                changes || 'No commits found.',
+                '',
+                `Source: #${pr.number}`
+              ].join('\n');
+
+              await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tag,
+                target_commitish: pr.merge_commit_sha,
+                name: pr.title,
+                body,
+                draft: false,
+                prerelease: false
+              });
+
+              core.info(`Created release: ${pr.title}`);
+            }
