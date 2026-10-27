@@ -523,7 +523,7 @@
 	{/if}
 
 	<header
-		class="relative z-40 mx-auto flex w-[min(100%,1120px)] items-center justify-between px-5.5 pt-[max(20px,var(--content-safe-area-top,env(safe-area-inset-top)))] pb-2 max-[380px]:px-4 min-[720px]:pt-7 [@media(max-height:760px)_and_(max-width:600px)]:pt-[max(14px,var(--content-safe-area-top,env(safe-area-inset-top)))]"
+		class="relative z-40 mx-auto flex w-[min(100%,1120px)] items-center justify-between px-5.5 pt-[max(20px,env(safe-area-inset-top))] pb-2 max-[380px]:px-4 min-[720px]:pt-7 [@media(max-height:760px)_and_(max-width:600px)]:pt-[max(14px,env(safe-area-inset-top))]"
 	>
 		<RealmateLogo />
 
@@ -1323,7 +1323,7 @@
 	</main>
 
 	<footer
-		class="relative z-2 flex items-center justify-center gap-2.5 px-5 pt-2 pb-[max(18px,var(--content-safe-area-bottom,env(safe-area-inset-bottom)))] text-[9px] tracking-[0.04em] text-[#514b57]"
+		class="relative z-2 flex items-center justify-center gap-2.5 px-5 pt-2 pb-[max(18px,env(safe-area-inset-bottom))] text-[9px] tracking-[0.04em] text-[#514b57]"
 	>
 		<span class="font-extrabold">realmate</span>
 		<i class="size-0.75 rounded-full bg-[#514b57]"></i>
