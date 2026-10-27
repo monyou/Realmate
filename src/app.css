@@ -39,37 +39,6 @@ input {
 	font: inherit;
 }
 
-html.duo-layout .app-shell {
-	/* Manual corner allowance, not a measurement of the system icons. */
-	--system-corner-width: 96px;
-	--system-corner-height: 64px;
-	--system-top-space: env(safe-area-inset-top, 0px);
-	/* The shell already accounts for these insets in installed mode. */
-	--content-safe-area-top: 0px;
-	--content-safe-area-bottom: 0px;
-	padding-top: var(--system-top-space);
-	padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-
-html.duo-layout .app-shell > div {
-	min-height: calc(100dvh - var(--system-top-space) - env(safe-area-inset-bottom, 0px));
-}
-
-html.duo-layout .app-shell header {
-	min-height: var(--system-corner-height);
-	padding-right: max(var(--system-corner-width), env(safe-area-inset-right, 0px));
-	padding-left: max(20px, env(safe-area-inset-left, 0px));
-}
-
-@media (min-width: 600px) and (orientation: portrait) {
-	html.duo-layout .app-shell {
-		/* Size-based approximation of the unfolded portrait display. */
-		--system-top-space: max(64px, env(safe-area-inset-top, 0px));
-		--system-corner-width: 20px;
-		--system-corner-height: 0px;
-	}
-}
-
 button {
 	-webkit-tap-highlight-color: transparent;
 }
