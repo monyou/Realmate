@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { asset, resolve } from '$app/paths';
 	import Confetti from '#lib/components/Confetti.svelte';
 	import RealmateLogo from '#lib/components/RealmateLogo.svelte';
@@ -8,7 +8,7 @@
 		voteWasAcknowledged,
 		type QueuedVote
 	} from '#lib/optimistic-votes.js';
-	import { normalizeRoomCode, partyRoomPath } from '#lib/party-room.js';
+	import { isRoomId, normalizeRoomCode, partyRoomPath } from '#lib/party-room.js';
 	import type { MediaItem, PartyState } from '#lib/types.js';
 	import type { PageData } from './$types';
 
@@ -32,6 +32,9 @@
 	let roomId = $derived(data.roomId);
 	let roomCode = $state('');
 	let joinCode = $state('');
+	let joinInput: HTMLInputElement;
+	let joinButton = $state<HTMLButtonElement>();
+	let codeError = $state('');
 	let joinPartyOpen = $state(false);
 	let playerId = $state('');
 	let playerName = $state('');
@@ -103,6 +106,7 @@
 		localStorage.setItem('realmate-player-name', playerName);
 		let stopped = false;
 		roomCode = roomId;
+		joinCode = roomId;
 		pageReady = true;
 
 		if (roomId) {
@@ -222,19 +226,27 @@
 		window.location.href = window.location.pathname;
 	}
 
-	function joinParty() {
-		if (!joinPartyOpen) {
-			joinPartyOpen = true;
-			return;
-		}
+	async function openJoinForm() {
+		joinPartyOpen = true;
+		await tick();
+		joinInput.focus();
+	}
 
-		if (!normalizeRoomCode(joinCode)) return;
-		window.location.href = partyRoomPath(window.location.pathname, joinCode);
+	async function closeJoinForm() {
+		joinPartyOpen = false;
+		codeError = '';
+		await tick();
+		joinButton?.focus();
 	}
 
 	function submitJoinParty(event: SubmitEvent) {
 		event.preventDefault();
-		joinParty();
+		if (!isRoomId(normalizeRoomCode(joinCode))) {
+			codeError = 'Paste the complete room code from your host.';
+			joinInput.focus();
+			return;
+		}
+		window.location.href = partyRoomPath(window.location.pathname, joinCode);
 	}
 
 	function makeGuestName(id: string) {
@@ -493,6 +505,52 @@
 	}
 </script>
 
+{#snippet joinForm()}
+	<form
+		class="grid gap-3 rounded-3xl border border-white/9 bg-white/3 p-3 text-left min-[560px]:grid-cols-[minmax(0,1fr)_auto] min-[560px]:items-end"
+		onsubmit={submitJoinParty}
+	>
+		<div class="min-w-0">
+			<label
+				for="join-room-code"
+				class="mb-2 block px-1 text-[10px] font-bold tracking-[0.08em] text-(--muted) uppercase"
+			>
+				Room code
+			</label>
+			<input
+				id="join-room-code"
+				bind:value={joinCode}
+				bind:this={joinInput}
+				autocapitalize="none"
+				aria-invalid={codeError ? 'true' : undefined}
+				aria-describedby={codeError ? 'join-code-error' : undefined}
+				oninput={() => (codeError = '')}
+				onkeydown={(event) => {
+					if (event.key === 'Escape' && joinPartyOpen) void closeJoinForm();
+				}}
+				type="text"
+				inputmode="text"
+				autocomplete="off"
+				spellcheck="false"
+				placeholder="Paste room code"
+				class="w-full rounded-2xl border border-white/10 bg-black/18 px-4 py-3.5 font-mono text-sm text-white transition outline-none focus:border-(--purple)"
+			/>
+		</div>
+		<button
+			type="submit"
+			disabled={!normalizeRoomCode(joinCode)}
+			class="inline-flex w-full cursor-pointer items-center justify-between gap-6 rounded-2xl border border-white/12 bg-white/7 px-5 py-3.5 text-sm font-extrabold text-white transition hover:not-disabled:bg-white/11 disabled:cursor-not-allowed disabled:opacity-40 min-[560px]:w-auto"
+		>
+			<span>Join party</span><span aria-hidden="true">→</span>
+		</button>
+		{#if codeError}
+			<p id="join-code-error" role="alert" class="text-sm text-[#ff8ca0] min-[560px]:col-span-2">
+				{codeError}
+			</p>
+		{/if}
+	</form>
+{/snippet}
+
 <svelte:head>
 	<title>Realmate — Find tonight’s watch</title>
 	<meta
@@ -594,41 +652,13 @@
 
 				<div class="mx-auto mt-3 w-[min(100%,520px)]">
 					{#if joinPartyOpen}
-						<form
-							class="grid gap-3 rounded-3xl border border-white/9 bg-white/3 p-3 text-left min-[560px]:grid-cols-[minmax(0,1fr)_auto] min-[560px]:items-end"
-							onsubmit={submitJoinParty}
-						>
-							<div class="min-w-0">
-								<label
-									for="join-room-code"
-									class="mb-2 block px-1 text-[10px] font-bold tracking-[0.08em] text-(--muted) uppercase"
-								>
-									Enter the party room code you received
-								</label>
-								<input
-									id="join-room-code"
-									bind:value={joinCode}
-									type="text"
-									inputmode="text"
-									autocomplete="off"
-									spellcheck="false"
-									placeholder="Paste room code"
-									class="w-full rounded-2xl border border-white/10 bg-black/18 px-4 py-3.5 font-mono text-sm text-white transition outline-none focus:border-(--purple)"
-								/>
-							</div>
-							<button
-								type="submit"
-								disabled={!normalizeRoomCode(joinCode)}
-								class="inline-flex w-full cursor-pointer items-center justify-between gap-6 rounded-2xl border border-white/12 bg-white/7 px-5 py-3.5 text-sm font-extrabold text-white transition hover:not-disabled:bg-white/11 disabled:cursor-not-allowed disabled:opacity-40 min-[560px]:w-auto"
-							>
-								<span>Join party</span><span aria-hidden="true">→</span>
-							</button>
-						</form>
+						{@render joinForm()}
 					{:else}
 						<button
 							type="button"
 							class="inline-flex min-w-40 cursor-pointer items-center justify-between gap-6 rounded-2xl border border-white/12 bg-white/5 px-5 py-3.5 text-sm font-extrabold text-white transition hover:bg-white/9"
-							onclick={joinParty}
+							bind:this={joinButton}
+							onclick={openJoinForm}
 						>
 							<span>Join party</span><span aria-hidden="true">→</span>
 						</button>
@@ -682,6 +712,9 @@
 				<p class="mx-auto mt-5 max-w-105 text-[15px] leading-[1.65] text-(--muted)" role="alert">
 					{roomMissing ? 'This party room does not exist or is no longer available.' : joinError}
 				</p>
+				{#if roomMissing}
+					<div class="mx-auto mt-5 max-w-130">{@render joinForm()}</div>
+				{/if}
 				<button
 					class="mt-7 cursor-pointer rounded-[15px] border border-white/12 bg-white/7 px-5 py-3.5 font-bold text-(--ink) transition-colors hover:bg-white/11"
 					onclick={returnHome}

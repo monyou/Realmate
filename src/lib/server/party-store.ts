@@ -1,3 +1,4 @@
+import { isRoomId } from '#lib/party-room.js';
 import { UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN } from '$app/env/private';
 import type { PartyState, SourceMedia } from '#lib/types.js';
 import { Redis } from '@upstash/redis';
@@ -7,7 +8,6 @@ type PartyOperation = (engine: PartyEngine) => PartyState | Promise<PartyState>;
 
 const lockTimeoutMs = 12_000;
 const lockWaitAttempts = 80;
-const roomIdPattern = /^[0-9a-f]{32}$/;
 const activeRoomTtlSeconds = 24 * 60 * 60;
 const completedRoomTtlSeconds = 2 * 60 * 60;
 
@@ -24,9 +24,6 @@ export class PartyNotFoundError extends Error {
 		this.name = 'PartyNotFoundError';
 	}
 }
-
-export const isRoomId = (value: string | null | undefined): value is string =>
-	typeof value === 'string' && roomIdPattern.test(value);
 
 const getRedis = () => {
 	const url = UPSTASH_REDIS_REST_URL;
