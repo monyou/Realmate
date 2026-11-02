@@ -613,57 +613,45 @@
 			<section
 				class="relative z-2 m-auto w-[min(100%,1120px)] px-5.5 pt-10 pb-14 text-center max-[380px]:px-4 min-[720px]:pt-16"
 			>
-				<div
-					class="mb-5 inline-flex items-center gap-2 text-[11px] font-extrabold tracking-[0.18em] text-[#d7d0e2] uppercase"
-				>
-					<span class="h-px w-6 bg-(--rose) shadow-[0_0_10px_var(--rose)]"></span> One room. One choice.
-				</div>
 				<h1
-					class="m-0 mx-auto max-w-220 text-[clamp(46px,9vw,88px)] leading-[0.94] font-[850] tracking-[-0.07em] [&_em]:font-serif [&_em]:font-normal [&_em]:tracking-[-0.055em] [&_em]:text-(--rose)"
+					class="m-0 mx-auto max-w-220 text-[clamp(36px,7vw,76px)] leading-[0.94] font-[850] tracking-[-0.07em] text-balance [&_em]:font-serif [&_em]:font-normal [&_em]:tracking-[-0.055em] [&_em]:text-(--rose)"
 				>
-					Stop debating.<br /><em>Start matching.</em>
+					Find a movie or series<br /><em>everyone wants to watch.</em>
 				</h1>
 
 				<p class="mx-auto mt-6 max-w-155 text-[15px] leading-[1.7] text-(--muted)">
-					Save your movie and series lists, invite your people, and swipe together. Realmate reveals
-					the first title everyone wants to watch.
+					Swipe through the same titles together. The first one everyone likes is tonight’s pick.
 				</p>
 
-				<div class="mt-8 flex flex-row items-center justify-center gap-3">
-					{#if data.user}
-						<a
-							href={resolve('profile')}
-							class="inline-flex min-w-44 items-center justify-between gap-6 rounded-2xl bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-4 text-sm font-extrabold text-[#160b10] no-underline shadow-[0_14px_34px_rgba(255,63,102,.24)] transition hover:-translate-y-0.5"
-							><span>Open your lists</span><span>→</span></a
-						>
-					{:else}
-						<a
-							href={resolve('login')}
-							class="inline-flex min-w-38 items-center justify-between gap-6 rounded-2xl bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-4 text-sm font-extrabold text-[#160b10] no-underline shadow-[0_14px_34px_rgba(255,63,102,.24)] transition hover:-translate-y-0.5"
-							><span>Log in</span><span>→</span></a
-						>
-						<a
-							href={resolve('register')}
-							class="rounded-2xl border border-white/12 bg-white/5 px-5 py-4 text-sm font-extrabold text-white no-underline transition hover:bg-white/9"
-							>Create account</a
-						>
-					{/if}
-				</div>
-
-				<div class="mx-auto mt-3 w-[min(100%,520px)]">
-					{#if joinPartyOpen}
-						{@render joinForm()}
-					{:else}
+				<div
+					class="mx-auto mt-8 flex max-w-130 flex-col items-stretch justify-center gap-3 min-[520px]:flex-row"
+				>
+					<a
+						href={data.user ? resolve('profile') : resolve('register')}
+						class="inline-flex items-center justify-center gap-3 rounded-2xl bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-4 text-sm font-extrabold text-[#160b10] no-underline shadow-[0_14px_34px_rgba(255,63,102,.24)] transition hover:-translate-y-0.5"
+						><span>Host a watch party</span><span aria-hidden="true">→</span></a
+					>
+					{#if !joinPartyOpen}
 						<button
 							type="button"
-							class="inline-flex min-w-40 cursor-pointer items-center justify-between gap-6 rounded-2xl border border-white/12 bg-white/5 px-5 py-3.5 text-sm font-extrabold text-white transition hover:bg-white/9"
+							class="inline-flex cursor-pointer items-center justify-center gap-3 rounded-2xl border border-white/12 bg-white/5 px-5 py-4 text-sm font-extrabold text-white transition hover:bg-white/9"
 							bind:this={joinButton}
-							onclick={openJoinForm}
+							onclick={openJoinForm}>Join with a code</button
 						>
-							<span>Join party</span><span aria-hidden="true">→</span>
-						</button>
 					{/if}
 				</div>
+				{#if joinPartyOpen}
+					<div class="mx-auto mt-3 max-w-130">{@render joinForm()}</div>
+				{/if}
+				<p class="mt-3 text-sm text-(--muted)">Guests can join without an account.</p>
+				{#if !data.user}
+					<p class="mt-2 text-sm text-(--muted)">
+						Already have an account? <a
+							class="font-bold text-white underline underline-offset-4"
+							href={resolve('login')}>Log in</a
+						>
+					</p>
+				{/if}
 
 				<div class="mx-auto mt-13 grid max-w-220 gap-3 text-left min-[700px]:grid-cols-3">
 					<div class="rounded-3xl border border-white/8 bg-white/3 p-5">
