@@ -4,6 +4,7 @@ import {
 	buildTmdbDiscoverUrl,
 	generateItemsFromTmdb,
 	makeGeneratedListName,
+	searchTitles,
 	validateGeneratedItems,
 	validateGenerationCriteria
 } from '#lib/server/generated-list.js';
@@ -280,4 +281,29 @@ describe('TMDB discovery generation', () => {
 		expect(name).toBe('Generated Drama + Sci-Fi movies · 123456');
 		expect(name.length).toBeLessThanOrEqual(80);
 	});
+});
+
+it('maps movies and series from one search, omits people, and leaves missing metadata editable', async () => {
+	const fetcher = vi.fn(async () =>
+		jsonResponse({
+			results: [
+				{
+					media_type: 'movie',
+					title: 'Dune',
+					release_date: '2021-10-22',
+					genre_ids: [18],
+					vote_average: 7.8
+				},
+				{ media_type: 'person', name: 'Dune' },
+				{ media_type: 'tv', name: 'Dune: Prophecy', first_air_date: '' }
+			]
+		})
+	);
+	const results = await searchTitles('Dune', 'token', fetcher);
+	expect(fetcher).toHaveBeenCalledOnce();
+	expect(results.map(({ title, type, year, genres }) => ({ title, type, year, genres }))).toEqual([
+		{ title: 'Dune', type: 'movie', year: 2021, genres: ['Drama'] },
+		{ title: 'Dune: Prophecy', type: 'series', year: null, genres: [] }
+	]);
+	expect(results[0]).toMatchObject({ imdbRating: 7.8, ratingSource: 'TMDB' });
 });

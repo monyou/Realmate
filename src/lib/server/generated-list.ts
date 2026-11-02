@@ -384,12 +384,17 @@ const genreNamesForIds = (mediaType: TmdbMediaType, value: unknown) => {
 };
 
 const yearFromDate = (value: unknown) => {
-	if (typeof value !== 'string') return Number.NaN;
-	const year = Number(value.slice(0, 4));
-	return Number.isInteger(year) ? year : Number.NaN;
+	if (typeof value !== 'string' || !/^\d{4}/.test(value)) return Number.NaN;
+	return Number(value.slice(0, 4));
 };
 
-const mediaFromTmdb = ({ result, filter }: { result: TmdbResult; filter: TmdbFilter }) => {
+const mediaFromTmdb = ({
+	result,
+	filter
+}: {
+	result: TmdbResult;
+	filter: Pick<TmdbFilter, 'mediaType' | 'requestedGenres'>;
+}) => {
 	const type: MediaKind = filter.mediaType === 'movie' ? 'movie' : 'series';
 	const title = filter.mediaType === 'movie' ? result.title : result.name;
 	const genres = [
@@ -410,6 +415,27 @@ const mediaFromTmdb = ({ result, filter }: { result: TmdbResult; filter: TmdbFil
 		ratingSource: 'TMDB' as const,
 		plot: truncateMediaPlot(result.overview)
 	};
+};
+
+export const searchTitles = async (query: string, token: string, fetcher: TmdbFetcher = fetch) => {
+	if (!token.trim()) throw new ListGenerationError('Title search is unavailable.');
+	const url = new URL(TMDB_API_BASE_URL + '/search/multi');
+	url.searchParams.set('query', query);
+	const page = await tmdbRequest<{ results: Array<TmdbResult & { media_type?: unknown }> }>(
+		url,
+		token,
+		fetcher
+	);
+	if (!Array.isArray(page?.results)) throw new ListGenerationError('Title search is unavailable.');
+	return page.results.flatMap((result) => {
+		if (result?.media_type !== 'movie' && result?.media_type !== 'tv') return [];
+		const item = mediaFromTmdb({
+			result,
+			filter: { mediaType: result.media_type, requestedGenres: [] }
+		});
+		if (typeof item.title !== 'string' || !item.title.trim()) return [];
+		return [{ ...item, title: item.title, year: Number.isFinite(item.year) ? item.year : null }];
+	});
 };
 
 const safePosterUrl = (value: string) => {

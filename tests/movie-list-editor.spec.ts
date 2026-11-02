@@ -3,15 +3,24 @@ import { render } from 'svelte/server';
 import MovieListEditor from '#lib/components/MovieListEditor.svelte';
 
 describe('MovieListEditor', () => {
-	it('starts a new list expanded without showing validation feedback', () => {
+	it('starts a new list with search and manual entry', () => {
 		const { body } = render(MovieListEditor, { props: { mode: 'create' } });
 
-		expect(body).toContain('<details open=""');
+		expect(body).toContain('Search movies and series');
+		expect(body).toContain('Add a title manually');
+		expect(body).not.toContain('Untitled');
 		expect(body).toContain('novalidate=""');
 		expect(body).not.toContain('Title is required.');
 		expect(body).not.toContain('Type is required.');
 		expect(body).not.toContain('At least one genre is required.');
 		expect(body).not.toContain('Year is required.');
+		expect(body).not.toMatch(/<button type="submit" disabled=""[^>]*>Create list/);
+	});
+
+	it('restores manual fields after an unsuccessful create', () => {
+		const { body } = render(MovieListEditor, {
+			props: { mode: 'create', form: { values: { itemsJson: '[{"title":"Example"}]' } } }
+		});
 		expect(body).toContain('Enter 1–3 genres separated with commas.');
 		expect(body).toContain('Available genres');
 		expect(body).toContain('role="combobox"');
@@ -20,7 +29,6 @@ describe('MovieListEditor', () => {
 		expect(body).toContain('maxlength="360"');
 		expect(body).toContain('Shown on the back of the swipe card.');
 		expect(body).toMatch(/<details open="" class="[^"]*overflow-visible[^"]*open:z-20/);
-		expect(body).not.toMatch(/<button type="submit" disabled=""[^>]*>Create list/);
 	});
 
 	it('prefills a complete list in edit mode', () => {

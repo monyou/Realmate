@@ -2,6 +2,7 @@
 	import { tick } from 'svelte';
 	import { enhance, type SubmitFunction } from '$app/forms';
 	import { resolve } from '$app/paths';
+	import TitleSearch from '#lib/components/TitleSearch.svelte';
 	import GenreCombobox from '#lib/components/GenreCombobox.svelte';
 	import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
 	import RealmateLogo from '#lib/components/RealmateLogo.svelte';
@@ -98,7 +99,7 @@
 				saved = [];
 			}
 		}
-		return Array.isArray(saved) && saved.length > 0 ? saved.map(toDraftItem) : [emptyItem()];
+		return Array.isArray(saved) && saved.length > 0 ? saved.map(toDraftItem) : [];
 	};
 	const restoreName = () => form?.values?.name ?? initialName;
 	const restoreDescription = () => form?.values?.description ?? initialDescription;
@@ -175,11 +176,11 @@
 	);
 
 	const removeItem = (key: string) => {
-		if (items.length > 1) items = items.filter((item) => item.key !== key);
+		items = items.filter((item) => item.key !== key);
 	};
 
 	const handleSubmit: SubmitFunction = ({ cancel }) => {
-		showListErrors = !hasValidListDetails();
+		showListErrors = true;
 		for (const item of items) {
 			if (!isComplete(item)) {
 				item.showErrors = true;
@@ -199,7 +200,8 @@
 
 		cancel();
 		void tick().then(() => {
-			document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+			const invalid = document.querySelector<HTMLElement>('[aria-invalid="true"]');
+			(invalid ?? document.getElementById('title-search'))?.focus();
 		});
 	};
 </script>
@@ -301,6 +303,24 @@
 				</div>
 			</section>
 
+			<TitleSearch
+				onadd={(result) => {
+					const item = toDraftItem(result);
+					item.expanded = !isComplete(item);
+					item.showErrors = item.expanded;
+					items.push(item);
+				}}
+				onmanual={async (title) => {
+					const item = emptyItem();
+					item.title = title;
+					items.push(item);
+					await tick();
+					document.getElementById(`title-${item.key}`)?.focus();
+				}}
+			/>
+			{#if showListErrors && !items.length}<p role="alert" class="text-sm text-[#ff9aac]">
+					Add at least one movie or series.
+				</p>{/if}
 			<div class="space-y-5">
 				{#each items as item, index (item.key)}
 					<details
@@ -339,14 +359,14 @@
 							</div>
 						</summary>
 						<div class="border-t border-white/7 p-5 min-[700px]:p-7">
-							{#if items.length > 1}<div class="mb-5 flex justify-end">
-									<button
-										type="button"
-										onclick={() => removeItem(item.key)}
-										class="cursor-pointer rounded-xl border border-white/9 bg-white/4 px-3 py-2 text-xs font-bold text-(--muted) hover:text-white"
-										>Remove title</button
-									>
-								</div>{/if}
+							<div class="mb-5 flex justify-end">
+								<button
+									type="button"
+									onclick={() => removeItem(item.key)}
+									class="cursor-pointer rounded-xl border border-white/9 bg-white/4 px-3 py-2 text-xs font-bold text-(--muted) hover:text-white"
+									>Remove title</button
+								>
+							</div>
 							<div class="grid gap-5 min-[700px]:grid-cols-2">
 								<div>
 									<label for={`title-${item.key}`} class="mb-2 block text-xs font-bold"
@@ -542,12 +562,6 @@
 					</details>
 				{/each}
 			</div>
-			<button
-				type="button"
-				onclick={() => (items = [...items, emptyItem()])}
-				class="w-full cursor-pointer rounded-2xl border border-dashed border-white/16 bg-white/3 px-5 py-4 text-sm font-extrabold text-white transition hover:border-(--purple) hover:bg-(--purple)/7"
-				>+ Add another movie or series</button
-			>
 			{#if hasVisibleValidationErrors}<p
 					class="rounded-2xl border border-[#ff5c74]/25 bg-[#ff5c74]/8 px-4 py-3 text-sm text-[#ff9aac]"
 					role="alert"
