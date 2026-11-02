@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { enhance, type SubmitFunction } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import TitleSearch from '#lib/components/TitleSearch.svelte';
@@ -35,6 +35,7 @@
 	} | null;
 
 	type Props = {
+		listId?: string;
 		mode: 'create' | 'edit';
 		form?: EditorActionData;
 		initialName?: string;
@@ -44,6 +45,7 @@
 	};
 
 	let {
+		listId,
 		mode,
 		form = null,
 		initialName = '',
@@ -103,13 +105,22 @@
 	};
 	const restoreName = () => form?.values?.name ?? initialName;
 	const restoreDescription = () => form?.values?.description ?? initialDescription;
-	const submittedVersion = $derived(form?.values?.expectedUpdatedAt ?? expectedUpdatedAt);
-
-	let listName = $state(restoreName());
-	let description = $state(restoreDescription());
-	let items = $state<DraftItem[]>(restoreItems());
-	let showListErrors = $state(false);
-	let submitting = $state(false);
+	const draft = $derived.by(() => {
+		const id = listId;
+		// A refreshed load must not advance the version associated with unsaved fields.
+		return untrack(() => {
+			const snapshot = $state({
+				listId: id,
+				name: restoreName(),
+				description: restoreDescription(),
+				items: restoreItems(),
+				version: form?.values?.expectedUpdatedAt ?? expectedUpdatedAt,
+				showListErrors: false,
+				submitting: false
+			});
+			return snapshot;
+		});
+	});
 
 	const genreValidation = (item: DraftItem) => validateGenreInput(item.genres);
 	const hasValidGenres = (item: DraftItem) => genreValidation(item).valid;
@@ -149,20 +160,22 @@
 			hasValidRating(item) &&
 			hasValidPlot(item)
 		);
-	const hasValidListName = () => Boolean(listName.trim() && listName.length <= 80);
-	const hasValidDescription = () => description.length <= 500;
+	const hasValidListName = () => Boolean(draft.name.trim() && draft.name.length <= 80);
+	const hasValidDescription = () => draft.description.length <= 500;
 	const hasValidListDetails = () => hasValidListName() && hasValidDescription();
 	const hasValidationErrors = $derived(
-		!hasValidListDetails() || items.length === 0 || items.some((item) => !isComplete(item))
+		!hasValidListDetails() ||
+			draft.items.length === 0 ||
+			draft.items.some((item) => !isComplete(item))
 	);
 	const hasVisibleValidationErrors = $derived(
-		(showListErrors && !hasValidListDetails()) ||
-			items.some((item) => item.showErrors && !isComplete(item))
+		(draft.showListErrors && !hasValidListDetails()) ||
+			draft.items.some((item) => item.showErrors && !isComplete(item))
 	);
 
 	const payload = $derived(
 		JSON.stringify(
-			items.map((item) => ({
+			draft.items.map((item) => ({
 				title: item.title.trim(),
 				type: item.type,
 				genres: normalizedGenres(item),
@@ -176,24 +189,25 @@
 	);
 
 	const removeItem = (key: string) => {
-		items = items.filter((item) => item.key !== key);
+		draft.items = draft.items.filter((item) => item.key !== key);
 	};
 
 	const handleSubmit: SubmitFunction = ({ cancel }) => {
-		showListErrors = true;
-		for (const item of items) {
+		draft.showListErrors = true;
+		for (const item of draft.items) {
 			if (!isComplete(item)) {
 				item.showErrors = true;
 				item.expanded = true;
 			}
 		}
 		if (!hasValidationErrors) {
-			submitting = true;
+			const submittedDraft = draft;
+			submittedDraft.submitting = true;
 			return async ({ update }) => {
 				try {
 					await update();
 				} finally {
-					submitting = false;
+					submittedDraft.submitting = false;
 				}
 			};
 		}
@@ -247,7 +261,7 @@
 		<form method="POST" class="mt-9 space-y-6" novalidate use:enhance={handleSubmit}>
 			<input type="hidden" name="items" value={payload} />
 			{#if mode === 'edit'}
-				<input type="hidden" name="expectedUpdatedAt" value={submittedVersion} />
+				<input type="hidden" name="expectedUpdatedAt" value={draft.version} />
 			{/if}
 			<section
 				class="grid gap-5 rounded-[26px] border border-white/9 bg-white/3 p-5 min-[700px]:grid-cols-2 min-[700px]:p-7"
@@ -258,21 +272,23 @@
 					><input
 						id="name"
 						name="name"
-						bind:value={listName}
+						bind:value={draft.name}
 						required
 						maxlength="80"
 						placeholder="Friday night favourites"
-						aria-invalid={showListErrors && !hasValidListName()}
-						aria-describedby={showListErrors && !hasValidListName() ? 'name-error' : undefined}
-						class="box-border w-full rounded-2xl border bg-black/20 px-4 py-3.5 text-sm text-white outline-none placeholder:text-[#68616f] focus:border-(--purple) {showListErrors &&
+						aria-invalid={draft.showListErrors && !hasValidListName()}
+						aria-describedby={draft.showListErrors && !hasValidListName()
+							? 'name-error'
+							: undefined}
+						class="box-border w-full rounded-2xl border bg-black/20 px-4 py-3.5 text-sm text-white outline-none placeholder:text-[#68616f] focus:border-(--purple) {draft.showListErrors &&
 						!hasValidListName()
 							? 'border-[#ff5c74]/60'
 							: 'border-white/12'}"
 					/>
-					{#if showListErrors && !hasValidListName()}<small
+					{#if draft.showListErrors && !hasValidListName()}<small
 							id="name-error"
 							class="mt-1.5 block text-[10px] text-[#ff8ca0]"
-							>{listName.trim()
+							>{draft.name.trim()
 								? 'List name cannot exceed 80 characters.'
 								: 'List name is required.'}</small
 						>{/if}
@@ -283,19 +299,19 @@
 					><input
 						id="description"
 						name="description"
-						bind:value={description}
+						bind:value={draft.description}
 						maxlength="500"
 						placeholder="Comedies everyone will enjoy"
-						aria-invalid={showListErrors && !hasValidDescription()}
-						aria-describedby={showListErrors && !hasValidDescription()
+						aria-invalid={draft.showListErrors && !hasValidDescription()}
+						aria-describedby={draft.showListErrors && !hasValidDescription()
 							? 'description-error'
 							: undefined}
-						class="box-border w-full rounded-2xl border bg-black/20 px-4 py-3.5 text-sm text-white outline-none placeholder:text-[#68616f] focus:border-(--purple) {showListErrors &&
+						class="box-border w-full rounded-2xl border bg-black/20 px-4 py-3.5 text-sm text-white outline-none placeholder:text-[#68616f] focus:border-(--purple) {draft.showListErrors &&
 						!hasValidDescription()
 							? 'border-[#ff5c74]/60'
 							: 'border-white/12'}"
 					/>
-					{#if showListErrors && !hasValidDescription()}<small
+					{#if draft.showListErrors && !hasValidDescription()}<small
 							id="description-error"
 							class="mt-1.5 block text-[10px] text-[#ff8ca0]"
 							>Description cannot exceed 500 characters.</small
@@ -308,21 +324,24 @@
 					const item = toDraftItem(result);
 					item.expanded = !isComplete(item);
 					item.showErrors = item.expanded;
-					items.push(item);
+					draft.items.push(item);
 				}}
 				onmanual={async (title) => {
 					const item = emptyItem();
 					item.title = title;
-					items.push(item);
+					draft.items.push(item);
 					await tick();
 					document.getElementById(`title-${item.key}`)?.focus();
 				}}
 			/>
-			{#if showListErrors && !items.length}<p role="alert" class="text-sm text-[#ff9aac]">
+			{#if draft.showListErrors && !draft.items.length}<p
+					role="alert"
+					class="text-sm text-[#ff9aac]"
+				>
 					Add at least one movie or series.
 				</p>{/if}
 			<div class="space-y-5">
-				{#each items as item, index (item.key)}
+				{#each draft.items as item, index (item.key)}
 					<details
 						bind:open={item.expanded}
 						class="group relative overflow-visible rounded-[26px] border border-white/9 bg-[linear-gradient(145deg,rgba(29,25,39,.92),rgba(15,13,20,.97))] shadow-[0_18px_55px_rgba(0,0,0,.22)] open:z-20"
@@ -592,6 +611,6 @@
 </div>
 
 <LoadingOverlay
-	visible={submitting}
+	visible={draft.submitting}
 	label={mode === 'create' ? 'Creating your list…' : 'Saving your changes…'}
 />
