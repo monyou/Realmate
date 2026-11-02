@@ -614,7 +614,7 @@
 				class="relative z-2 m-auto w-[min(100%,1120px)] px-5.5 pt-10 pb-14 text-center max-[380px]:px-4 min-[720px]:pt-16"
 			>
 				<h1
-					class="m-0 mx-auto max-w-220 text-[clamp(36px,7vw,76px)] leading-[0.94] font-[850] tracking-[-0.07em] text-balance [&_em]:font-serif [&_em]:font-normal [&_em]:tracking-[-0.055em] [&_em]:text-(--rose)"
+					class="m-0 mx-auto max-w-220 text-[clamp(36px,7vw,76px)] leading-[0.94] font-[850] tracking-[-0.04em] text-balance [&_em]:font-serif [&_em]:font-normal [&_em]:tracking-[-0.04em] [&_em]:text-(--rose)"
 				>
 					Find a movie or series<br /><em>everyone wants to watch.</em>
 				</h1>
