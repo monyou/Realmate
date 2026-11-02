@@ -7,7 +7,7 @@
 	let { onadd, onmanual }: { onadd: (item: Result) => void; onmanual: (title: string) => void } =
 		$props();
 	let query = $state('');
-	let results = $state<Result[]>([]);
+	let results = $state.raw<Result[]>([]);
 	let message = $state('');
 	let busy = $state(false);
 	let version = 0;
