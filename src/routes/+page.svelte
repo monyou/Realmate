@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
-	import { asset, resolve } from '$app/paths';
+	import { resolve } from '$app/paths';
+	import PartyLobby from '#lib/components/party/PartyLobby.svelte';
+	import PartyResult from '#lib/components/party/PartyResult.svelte';
+	import SwipeDeck from '#lib/components/party/SwipeDeck.svelte';
+	import { avatarColor, playerInitials } from '#lib/party-presentation.js';
 	import Confetti from '#lib/components/Confetti.svelte';
 	import RealmateLogo from '#lib/components/RealmateLogo.svelte';
 	import {
@@ -8,37 +12,29 @@
 		voteWasAcknowledged,
 		type QueuedVote
 	} from '#lib/optimistic-votes.js';
+	import { fetchParty, PartyRequestError, type PartyAction } from '#lib/party-client.js';
 	import { restorePartyState, type PartyResponse } from '#lib/party-response.js';
 	import { isRoomId, normalizeRoomCode, partyRoomPath } from '#lib/party-room.js';
-	import type { MediaItem, PartyState } from '#lib/types.js';
+	import type { PartyState } from '#lib/types.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
 	const guestWords = ['Popcorn', 'Velvet', 'Cosmic', 'Midnight', 'Neon', 'Golden'];
 	const guestAnimals = ['Fox', 'Panda', 'Owl', 'Otter', 'Moth', 'Cat'];
-	const avatarColors = [
-		'bg-[linear-gradient(145deg,#ff7c67,#df345d)]',
-		'bg-[linear-gradient(145deg,#8b7dff,#5a3fd1)]',
-		'bg-[linear-gradient(145deg,#43ddb8,#168b83)]',
-		'bg-[linear-gradient(145deg,#f6c860,#e47d3e)]',
-		'bg-[linear-gradient(145deg,#59b8ff,#3154cc)]',
-		'bg-[linear-gradient(145deg,#e879f9,#9b3fc2)]'
-	];
 
 	const noiseBackground =
 		"url(\"data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E\")";
-	const defaultPoster = asset('assets/default_poster.jpeg');
 	let party = $state<PartyState | null>(null);
 	const roomId = $derived(data.roomId);
 	type RoomSession = {
 		id: string;
 		requests: AbortController;
 		pollInFlight: boolean;
+		heartbeatInFlight: boolean;
 		voteQueueRunning: boolean;
 	};
 	let roomSession: RoomSession | null = null;
-	let roomCode = $state('');
 	let joinCode = $state('');
 	let joinInput: HTMLInputElement;
 	let joinButton = $state<HTMLButtonElement>();
@@ -47,35 +43,12 @@
 	let playerId = $state('');
 	let playerName = $state('');
 	let connected = $state(false);
-	let pageReady = $state(true);
 	let joinError = $state('');
 	let voteError = $state('');
 	let roomMissing = $state(false);
-	let copyStatus = $state<'idle' | 'copied' | 'failed'>('idle');
-	let dragX = $state(0);
-	let dragging = $state(false);
-	let cardFlipped = $state(false);
-	let leaving = $state(false);
-	let dragStart = 0;
-	let pointerMoved = false;
-	let activeTouchId: number | null = null;
 	let pendingVotes = $state<QueuedVote[]>([]);
-	let voteSendTimer: ReturnType<typeof setTimeout> | undefined;
-	let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
 	let pollTimer: ReturnType<typeof setInterval> | undefined;
 	let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
-
-	type PartyAction =
-		| { type: 'hello'; name: string }
-		| { type: 'start' }
-		| {
-				type: 'vote';
-				roundId: string;
-				itemId: string;
-				liked: boolean;
-		  }
-		| { type: 'again'; roundId: string }
-		| { type: 'leave' };
 
 	const swipeCardKey = (state: PartyState | null, progress: number) => {
 		const activeItem = state?.phase === 'playing' ? (state.deck[progress] ?? null) : null;
@@ -87,21 +60,10 @@
 	const currentItem = $derived(
 		party?.phase === 'playing' && me ? (party.deck[activeProgress] ?? null) : null
 	);
-	const nextItem = $derived(
-		party?.phase === 'playing' && me ? (party.deck[activeProgress + 1] ?? null) : null
-	);
-	const thirdItem = $derived(
-		party?.phase === 'playing' && me ? (party.deck[activeProgress + 2] ?? null) : null
-	);
 	const finishedSwiping = $derived(
 		party?.phase === 'playing' && me && activeProgress >= party.deck.length
 	);
 	const readyToStart = $derived((party?.onlineCount ?? 0) >= 2);
-	const yesStrength = $derived(Math.min(1, Math.max(0, dragX / 110)));
-	const noStrength = $derived(Math.min(1, Math.max(0, -dragX / 110)));
-	const cardTransform = $derived(
-		`transform: translate3d(${dragX}px, 0, 0) rotate(${dragX / 19}deg); transition: ${dragging ? 'none' : 'transform 260ms cubic-bezier(.2,.9,.2,1)'};`
-	);
 	const currentCardKey = $derived(swipeCardKey(party, activeProgress));
 
 	$effect(() => {
@@ -114,6 +76,7 @@
 			id,
 			requests: new AbortController(),
 			pollInFlight: false,
+			heartbeatInFlight: false,
 			voteQueueRunning: false
 		};
 		roomSession = session;
@@ -124,18 +87,20 @@
 		joinError = '';
 		voteError = '';
 		roomMissing = false;
-		copyStatus = 'idle';
 		joinPartyOpen = false;
 		codeError = '';
-		resetCard();
 
-		const guestSeed = localStorage.getItem('realmate-guest-seed') ?? crypto.randomUUID();
-		localStorage.setItem('realmate-guest-seed', guestSeed);
-		playerName = localStorage.getItem('realmate-player-name') ?? makeGuestName(guestSeed);
-		localStorage.setItem('realmate-player-name', playerName);
-		roomCode = id;
+		const guestSeed = crypto.randomUUID();
+		playerName = makeGuestName(guestSeed);
+		try {
+			const savedSeed = localStorage.getItem('realmate-guest-seed') ?? guestSeed;
+			localStorage.setItem('realmate-guest-seed', savedSeed);
+			playerName = localStorage.getItem('realmate-player-name') ?? makeGuestName(savedSeed);
+			localStorage.setItem('realmate-player-name', playerName);
+		} catch {
+			// Storage may be disabled. The server cookie still identifies this player.
+		}
 		joinCode = id;
-		pageReady = true;
 
 		if (id) {
 			void (async () => {
@@ -149,9 +114,7 @@
 			session.requests.abort();
 			if (pollTimer) clearInterval(pollTimer);
 			if (heartbeatTimer) clearInterval(heartbeatTimer);
-			if (voteSendTimer) clearTimeout(voteSendTimer);
-			if (copyResetTimer) clearTimeout(copyResetTimer);
-			if (id) {
+			if (id && !roomMissing) {
 				navigator.sendBeacon(
 					`/api/party?room=${encodeURIComponent(id)}`,
 					new Blob([JSON.stringify({ type: 'leave' })], { type: 'application/json' })
@@ -164,10 +127,7 @@
 		if (pollTimer) clearInterval(pollTimer);
 		if (heartbeatTimer) clearInterval(heartbeatTimer);
 		pollTimer = setInterval(() => void refreshParty(session), 900);
-		heartbeatTimer = setInterval(
-			() => void requestParty({ type: 'hello', name: playerName }, session),
-			3_000
-		);
+		heartbeatTimer = setInterval(() => void sendHeartbeat(session), 3_000);
 	}
 
 	function partyEndpoint(session: RoomSession) {
@@ -181,8 +141,6 @@
 			if (state.roundId !== party?.roundId || state.phase !== 'playing') {
 				pendingVotes = [];
 			}
-			const incomingProgress = optimisticPlayerProgress(state, response.playerId, pendingVotes);
-			if (swipeCardKey(state, incomingProgress) !== currentCardKey) resetCard();
 			party = state;
 		}
 		playerId = response.playerId;
@@ -190,36 +148,40 @@
 	}
 
 	async function requestParty(
-		action: PartyAction,
+		action?: PartyAction,
 		session = roomSession
 	): Promise<PartyResponse | null> {
 		if (!session?.id || session.requests.signal.aborted) return null;
 		try {
-			const response = await fetch(partyEndpoint(session), {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(action),
-				keepalive: action.type === 'vote',
-				signal: session.requests.signal
-			});
-			if (!response.ok) {
-				const body = (await response.json().catch(() => null)) as { message?: string } | null;
-				if (session.requests.signal.aborted) return null;
-				roomMissing = response.status === 404;
-				throw new Error(body?.message ?? `Party request failed (${response.status})`);
-			}
-			const partyResponse = (await response.json()) as PartyResponse;
+			const response = await fetchParty(partyEndpoint(session), session.requests.signal, action);
 			if (session.requests.signal.aborted) return null;
-			applyResponse(partyResponse);
+			applyResponse(response);
 			joinError = '';
 			roomMissing = false;
-			return partyResponse;
+			return response;
 		} catch (error) {
 			if (session.requests.signal.aborted) return null;
-			if (!roomMissing) console.error(error);
+			roomMissing = error instanceof PartyRequestError && error.status === 404;
+			if (roomMissing) {
+				party = null;
+				pendingVotes = [];
+				session.requests.abort();
+				if (pollTimer) clearInterval(pollTimer);
+				if (heartbeatTimer) clearInterval(heartbeatTimer);
+			}
 			connected = false;
 			joinError = error instanceof Error ? error.message : 'The watch party is unavailable.';
 			return null;
+		}
+	}
+
+	async function sendHeartbeat(session: RoomSession) {
+		if (session.heartbeatInFlight || session.requests.signal.aborted) return;
+		session.heartbeatInFlight = true;
+		try {
+			await requestParty({ type: 'hello', name: playerName }, session);
+		} finally {
+			session.heartbeatInFlight = false;
 		}
 	}
 
@@ -227,39 +189,19 @@
 		if (!session?.id || session.pollInFlight || session.requests.signal.aborted) return;
 		session.pollInFlight = true;
 		try {
-			const response = await fetch(partyEndpoint(session), {
-				cache: 'no-store',
-				signal: session.requests.signal
-			});
-			if (!response.ok) {
-				const body = (await response.json().catch(() => null)) as { message?: string } | null;
-				throw new Error(body?.message ?? `Party refresh failed (${response.status})`);
-			}
-			const update = (await response.json()) as PartyResponse;
-			if (session.requests.signal.aborted) return;
-			applyResponse(update);
-			joinError = '';
-		} catch (error) {
-			if (session.requests.signal.aborted) return;
-			console.error(error);
-			connected = false;
-			joinError = error instanceof Error ? error.message : 'The watch party is unavailable.';
+			await requestParty(undefined, session);
 		} finally {
 			session.pollInFlight = false;
 		}
 	}
 
-	async function copyRoomCode() {
-		if (!roomCode) return;
-		if (copyResetTimer) clearTimeout(copyResetTimer);
-		try {
-			if (!navigator.clipboard) throw new Error('Clipboard access is unavailable.');
-			await navigator.clipboard.writeText(roomCode);
-			copyStatus = 'copied';
-		} catch {
-			copyStatus = 'failed';
-		}
-		copyResetTimer = setTimeout(() => (copyStatus = 'idle'), 2_400);
+	function retryJoin() {
+		const session = roomSession;
+		if (!session || session.requests.signal.aborted || session.heartbeatInFlight) return;
+		void (async () => {
+			await sendHeartbeat(session);
+			if (!session.requests.signal.aborted && party) startPolling(session);
+		})();
 	}
 
 	function returnHome() {
@@ -269,7 +211,7 @@
 	async function openJoinForm() {
 		joinPartyOpen = true;
 		await tick();
-		joinInput.focus();
+		joinInput?.focus();
 	}
 
 	async function closeJoinForm() {
@@ -283,7 +225,7 @@
 		event.preventDefault();
 		if (!isRoomId(normalizeRoomCode(joinCode))) {
 			codeError = 'Paste the complete room code from your host.';
-			joinInput.focus();
+			joinInput?.focus();
 			return;
 		}
 		window.location.href = partyRoomPath(window.location.pathname, joinCode);
@@ -301,40 +243,18 @@
 
 	function sendAgain() {
 		if (!party?.roundId) return;
-		if (voteSendTimer) clearTimeout(voteSendTimer);
 		pendingVotes = [];
-		dragX = 0;
-		leaving = false;
 		void requestParty({ type: 'again', roundId: party.roundId });
 	}
 
-	function decide(liked: boolean) {
-		if (!currentItem || !party?.roundId || leaving) return;
+	function queueVote(liked: boolean) {
+		if (!currentItem || !party?.roundId) return;
 		voteError = '';
-		leaving = true;
-		dragging = false;
-		cardFlipped = false;
-		dragX = (liked ? 1 : -1) * Math.max(window.innerWidth, 520);
-		const itemId = currentItem.id;
 		const roundId = party.roundId;
+		const itemId = currentItem.id;
 		const position = activeProgress;
-		voteSendTimer = setTimeout(() => {
-			voteSendTimer = undefined;
-			pendingVotes = [...pendingVotes, { roundId, itemId, liked, position }];
-			resetCard();
-			void flushVoteQueue();
-		}, 190);
-	}
-
-	function resetCard() {
-		if (voteSendTimer) clearTimeout(voteSendTimer);
-		voteSendTimer = undefined;
-		dragX = 0;
-		dragging = false;
-		cardFlipped = false;
-		pointerMoved = false;
-		activeTouchId = null;
-		leaving = false;
+		pendingVotes = [...pendingVotes, { roundId, itemId, liked, position }];
+		void flushVoteQueue();
 	}
 
 	async function flushVoteQueue() {
@@ -381,172 +301,8 @@
 		}
 	}
 
-	function beginDrag(clientX: number) {
-		if (leaving) return;
-		dragging = true;
-		pointerMoved = false;
-		dragStart = clientX - dragX;
-	}
-
-	function moveDrag(clientX: number) {
-		if (!dragging || leaving) return;
-		dragX = clientX - dragStart;
-		if (Math.abs(dragX) > 6) pointerMoved = true;
-	}
-
-	function finishDrag() {
-		if (!dragging) return;
-		dragging = false;
-		if (Math.abs(dragX) >= 88) decide(dragX > 0);
-		else {
-			dragX = 0;
-			if (!pointerMoved && currentItem?.plot?.trim()) cardFlipped = !cardFlipped;
-		}
-	}
-
-	function cancelDrag() {
-		if (!dragging) return;
-		dragging = false;
-		dragX = 0;
-		pointerMoved = false;
-	}
-
-	function pointerDown(event: PointerEvent) {
-		// Mobile browsers also emit Touch Events. Handle touch through that API so
-		// installed iOS/Android web apps are not dependent on pointer capture.
-		if (event.pointerType === 'touch') return;
-		beginDrag(event.clientX);
-		try {
-			(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-		} catch {
-			// Capture is an enhancement; the drag still works while the pointer stays on the card.
-		}
-	}
-
-	function pointerMove(event: PointerEvent) {
-		if (event.pointerType === 'touch') return;
-		moveDrag(event.clientX);
-	}
-
-	function pointerUp(event: PointerEvent) {
-		if (event.pointerType === 'touch') return;
-		moveDrag(event.clientX);
-		finishDrag();
-	}
-
-	function pointerCancel(event: PointerEvent) {
-		if (event.pointerType === 'touch') return;
-		cancelDrag();
-	}
-
-	function findTouch(touches: TouchList, identifier: number) {
-		for (let index = 0; index < touches.length; index += 1) {
-			const touch = touches.item(index);
-			if (touch?.identifier === identifier) return touch;
-		}
-		return null;
-	}
-
-	function touchStart(event: TouchEvent) {
-		if (activeTouchId !== null || event.touches.length !== 1 || leaving) return;
-		const touch = event.changedTouches.item(0);
-		if (!touch) return;
-		event.preventDefault();
-		activeTouchId = touch.identifier;
-		beginDrag(touch.clientX);
-	}
-
-	function touchMove(event: TouchEvent) {
-		if (activeTouchId === null) return;
-		const touch = findTouch(event.changedTouches, activeTouchId);
-		if (!touch) return;
-		event.preventDefault();
-		moveDrag(touch.clientX);
-	}
-
-	function touchEnd(event: TouchEvent) {
-		if (activeTouchId === null) return;
-		const touch = findTouch(event.changedTouches, activeTouchId);
-		if (!touch) return;
-		moveDrag(touch.clientX);
-		activeTouchId = null;
-		finishDrag();
-	}
-
-	function touchCancel(event: TouchEvent) {
-		if (activeTouchId === null || !findTouch(event.changedTouches, activeTouchId)) return;
-		activeTouchId = null;
-		cancelDrag();
-	}
-
-	function mobileSwipe(node: HTMLElement) {
-		const nonPassive = { passive: false } as const;
-		node.addEventListener('touchstart', touchStart, nonPassive);
-		node.addEventListener('touchmove', touchMove, nonPassive);
-		node.addEventListener('touchend', touchEnd);
-		node.addEventListener('touchcancel', touchCancel);
-
-		return {
-			destroy() {
-				node.removeEventListener('touchstart', touchStart);
-				node.removeEventListener('touchmove', touchMove);
-				node.removeEventListener('touchend', touchEnd);
-				node.removeEventListener('touchcancel', touchCancel);
-			}
-		};
-	}
-
-	function handleCardKey(event: KeyboardEvent) {
-		if (!currentItem?.plot?.trim() || leaving) return;
-		if (event.key !== 'Enter' && event.key !== ' ') return;
-		event.preventDefault();
-		cardFlipped = !cardFlipped;
-	}
-
-	function handleKey(event: KeyboardEvent) {
-		if (party?.phase !== 'playing' || !currentItem || leaving) return;
-		if (event.key === 'ArrowLeft') decide(false);
-		if (event.key === 'ArrowRight') decide(true);
-	}
-
-	function playerInitials(name: string) {
-		return name
-			.split(' ')
-			.map((word) => word[0])
-			.join('')
-			.slice(0, 2);
-	}
-
 	function displayedProgress(player: PartyState['players'][number]) {
 		return player.id === playerId ? activeProgress : player.progress;
-	}
-
-	function avatarColor(avatar: number) {
-		return avatarColors[avatar % avatarColors.length];
-	}
-
-	function mediaLabel(item: MediaItem) {
-		return item.type === 'movie' ? 'Movie' : 'Series';
-	}
-
-	function ratingLabel(item: MediaItem) {
-		return item.imdbRating > 0 ? item.imdbRating.toFixed(1) : '?';
-	}
-
-	function ratingAriaLabel(item: MediaItem) {
-		const source = item.ratingSource ?? 'IMDb';
-		return item.imdbRating > 0
-			? `${source} rating ${ratingLabel(item)} out of 10`
-			: `${source} rating unknown`;
-	}
-
-	function posterSource(item: MediaItem) {
-		return item.img.trim() || defaultPoster;
-	}
-
-	function useDefaultPoster(event: Event) {
-		const image = event.currentTarget as HTMLImageElement;
-		if (!image.src.endsWith(defaultPoster)) image.src = defaultPoster;
 	}
 </script>
 
@@ -605,8 +361,6 @@
 	<meta name="theme-color" content="#0b0910" />
 </svelte:head>
 
-<svelte:window onkeydown={handleKey} />
-
 <div
 	class="relative isolate flex min-h-dvh flex-col overflow-hidden bg-[linear-gradient(rgba(255,255,255,0.018)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.018)_1px,transparent_1px)] bg-size-[52px_52px]"
 >
@@ -644,17 +398,17 @@
 		{/if}
 	</header>
 
+	{#if joinError && party}
+		<p
+			role="status"
+			class="relative z-2 mx-auto mt-3 max-w-130 px-5 text-center text-sm text-(--gold)"
+		>
+			{joinError} Reconnecting…
+		</p>
+	{/if}
+
 	<main class="grid w-full flex-1 place-items-center">
-		{#if !pageReady}
-			<section
-				class="relative z-2 m-auto flex w-[min(100%,620px)] flex-col items-center gap-5 px-5.5 pt-7 pb-10.5 text-center text-(--muted) max-[380px]:px-4"
-			>
-				<div
-					class="relative size-15.5 animate-[reel-spin_1.8s_linear_infinite] rounded-full border-2 border-white/15 border-t-(--rose) before:absolute before:top-2.5 before:left-2.5 before:size-3 before:rounded-full before:bg-white/12 before:content-[''] after:absolute after:top-2.5 after:right-2.5 after:size-3 after:rounded-full after:bg-white/12 after:content-['']"
-				></div>
-				<p>Loading Realmate…</p>
-			</section>
-		{:else if !roomId}
+		{#if !roomId}
 			<section
 				class="relative z-2 m-auto w-[min(100%,1120px)] px-5.5 pt-10 pb-14 text-center max-[380px]:px-4 min-[720px]:pt-16"
 			>
@@ -748,6 +502,12 @@
 				{#if roomMissing}
 					<div class="mx-auto mt-5 max-w-130">{@render joinForm()}</div>
 				{/if}
+				{#if !roomMissing}
+					<button
+						class="mt-5 rounded-xl border border-white/12 px-5 py-3 font-bold"
+						onclick={retryJoin}>Try joining again</button
+					>
+				{/if}
 				<button
 					class="mt-7 cursor-pointer rounded-[15px] border border-white/12 bg-white/7 px-5 py-3.5 font-bold text-(--ink) transition-colors hover:bg-white/11"
 					onclick={returnHome}
@@ -769,378 +529,11 @@
 				<p>Joining the watch party…</p>
 			</section>
 		{:else if party.phase === 'lobby'}
-			<section
-				class="relative z-2 m-auto w-[min(100%,620px)] px-5.5 pt-7 pb-10.5 text-center max-[380px]:px-4 min-[720px]:pt-10.5 [@media(max-height:760px)_and_(max-width:600px)]:pt-3"
-			>
-				<div
-					class="mb-5 inline-flex items-center gap-2 text-[11px] font-extrabold tracking-[0.18em] text-[#d7d0e2] uppercase"
-				>
-					<span class="h-px w-6 bg-(--rose) shadow-[0_0_10px_var(--rose)]"></span> One room. One choice.
-				</div>
-				<h1
-					class="m-0 text-[clamp(42px,11vw,68px)] leading-[0.97] font-[850] tracking-[-0.065em] [&_em]:font-serif [&_em]:font-normal [&_em]:tracking-[-0.055em] [&_em]:text-(--rose) [@media(max-height:760px)_and_(max-width:600px)]:text-[39px]"
-				>
-					Tonight’s watch,<br /><em>decided together.</em>
-				</h1>
-				<p
-					class="mx-auto mt-5.5 max-w-127.5 text-[15px] leading-[1.65] text-(--muted) [@media(max-height:760px)_and_(max-width:600px)]:mt-3.5"
-				>
-					Swipe through movies and series. The instant everyone likes the same title, the search is
-					over.
-				</p>
-
-				<div
-					class="relative mx-auto mt-8.5 w-[min(100%,470px)] overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(30,26,40,0.92),rgba(16,14,22,0.96))] p-5.5 text-left shadow-[0_28px_80px_rgba(0,0,0,0.32),inset_0_1px_rgba(255,255,255,0.05)] backdrop-blur-[20px] max-[380px]:rounded-[23px] max-[380px]:p-4.5 min-[720px]:p-6.25 [@media(max-height:760px)_and_(max-width:600px)]:mt-5.5"
-				>
-					<div
-						class="absolute -top-30 -right-22.5 size-60 rounded-full bg-[rgba(124,92,255,0.2)] blur-[48px]"
-					></div>
-					<div class="relative flex items-center justify-between">
-						<div class="flex flex-col gap-1.25">
-							<span class="text-[10px] font-bold tracking-[0.15em] text-(--muted) uppercase"
-								>Your watch party</span
-							>
-							<strong class="text-[21px] tracking-[-0.035em]"
-								>{party.onlineCount} {party.onlineCount === 1 ? 'person' : 'people'} here</strong
-							>
-						</div>
-						<div
-							class="flex size-10 items-end gap-0.75 rounded-xl bg-[rgba(66,232,193,0.08)] p-2.5 [&_i]:block [&_i]:w-1 [&_i]:rounded-[3px] [&_i]:bg-(--mint) [&_i]:shadow-[0_0_8px_rgba(66,232,193,0.4)] [&_i:nth-child(1)]:h-1.75 [&_i:nth-child(2)]:h-3.25 [&_i:nth-child(3)]:h-4.75"
-							aria-label="Live room"
-						>
-							<i></i><i></i><i></i>
-						</div>
-					</div>
-
-					<div class="relative mt-5 rounded-[17px] border border-white/8 bg-black/15 p-2.25">
-						<label
-							for="room-code"
-							class="mb-2 block px-1 text-[9px] font-bold tracking-[0.14em] text-(--muted) uppercase"
-							>Party room code</label
-						>
-						<div class="flex gap-2">
-							<input
-								id="room-code"
-								value={roomCode}
-								readonly
-								aria-label="Watch party room code"
-								class="min-w-0 flex-1 rounded-xl border border-white/9 bg-white/4 px-3 py-2.75 font-mono text-[11px] tracking-[0.03em] text-[#c8c1d2] outline-none focus:border-[rgba(124,92,255,0.7)]"
-							/>
-							<button
-								type="button"
-								class="min-w-20 cursor-pointer rounded-xl border-0 bg-[linear-gradient(120deg,var(--purple),#9a79ff)] px-3 py-2.75 text-[11px] font-extrabold text-white shadow-[0_8px_22px_rgba(124,92,255,0.24)] transition-transform hover:-translate-y-px active:translate-y-px"
-								onclick={() => void copyRoomCode()}
-							>
-								{copyStatus === 'copied'
-									? 'Copied ✓'
-									: copyStatus === 'failed'
-										? 'Try again'
-										: 'Copy code'}
-							</button>
-						</div>
-						{#if copyStatus === 'failed'}
-							<p class="mt-2 px-1 text-[10px] text-[#ff9bad]" role="status">
-								Clipboard access was blocked. Select the code and copy it manually.
-							</p>
-						{/if}
-					</div>
-
-					<div
-						class="mt-4.5 flex scrollbar-none gap-3.5 overflow-x-auto border-y border-white/6 py-4.25 [&::-webkit-scrollbar]:hidden"
-						aria-label="People in the room"
-					>
-						{#each party.players as player (player.id)}
-							<div
-								class="flex min-w-13.75 flex-none flex-col items-center gap-1.75"
-								title={player.name}
-							>
-								<span
-									class={`grid size-10.5 flex-none place-items-center rounded-[15px] border-2 border-white/12 text-[11px] font-[850] tracking-[-0.02em] shadow-[inset_0_1px_rgba(255,255,255,0.18)] ${avatarColor(player.avatar)}`}
-									>{playerInitials(player.name)}</span
-								>
-								<small
-									class="max-w-16 overflow-hidden text-[10px] font-[650] text-ellipsis whitespace-nowrap text-[#c8c1d2]"
-									>{player.id === playerId ? 'You' : player.name.split(' ')[0]}</small
-								>
-							</div>
-						{/each}
-						{#if party.players.length === 1}
-							<div class="flex min-w-13.75 flex-none flex-col items-center gap-1.75 opacity-70">
-								<span
-									class="grid size-10.5 flex-none place-items-center rounded-[15px] border border-dashed border-white/18 bg-white/3 text-[22px] font-light tracking-[-0.02em] text-[#8a8492]"
-									>+</span
-								>
-								<small
-									class="max-w-16 overflow-hidden text-[10px] font-[650] text-ellipsis whitespace-nowrap text-[#c8c1d2]"
-									>Waiting</small
-								>
-							</div>
-						{/if}
-					</div>
-
-					{#if party.message}
-						<p class="mt-3.5 text-center text-xs text-(--gold)">{party.message}</p>
-					{/if}
-
-					<button
-						class="relative mt-4.5 flex w-full cursor-pointer items-center justify-between rounded-[17px] border-0 px-5 py-4.25 font-extrabold tracking-[-0.02em] text-[#120a0f] shadow-[0_14px_34px_rgba(255,63,102,0.24),inset_0_1px_rgba(255,255,255,0.35)] transition-[transform,box-shadow,opacity] duration-150 ease-in-out hover:not-disabled:-translate-y-0.5 hover:not-disabled:shadow-[0_18px_42px_rgba(255,63,102,0.32)] active:not-disabled:translate-y-px active:not-disabled:scale-[0.99] enabled:bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] disabled:cursor-not-allowed disabled:bg-white/7.5 disabled:text-[#89838f] disabled:shadow-none [&_b]:text-[23px] [&_b]:leading-none"
-						disabled={!readyToStart}
-						onclick={sendStart}
-					>
-						<span>{readyToStart ? 'Start swiping' : 'Waiting for someone else'}</span>
-						<b aria-hidden="true">→</b>
-					</button>
-					<p
-						class="mt-3.25 flex items-center justify-center gap-1.75 text-center text-[10px] text-[#817a89]"
-					>
-						<span class="text-(--gold)">✦</span>
-						{readyToStart
-							? 'Anyone can start — it begins for everyone'
-							: 'Share the room code with at least one person'}
-					</p>
-				</div>
-			</section>
+			<PartyLobby {party} {playerId} roomCode={roomId} onstart={sendStart} />
 		{:else if party.phase === 'playing' && me && !finishedSwiping}
-			<section
-				class="relative z-2 m-auto w-[min(100%,470px)] px-5.5 pt-3.5 pb-10.5 text-center max-[380px]:px-4 min-[720px]:pt-5.5 [@media(max-height:760px)_and_(max-width:600px)]:pt-1 [@media(max-height:760px)_and_(max-width:600px)]:pb-5"
-			>
-				<div class="mx-0.75 mb-3 flex items-center justify-between">
-					<div class="flex pl-2">
-						{#each party.players.slice(0, 4) as player (player.id)}
-							<span
-								class={`-ml-2 grid size-7.5 flex-none place-items-center rounded-[10px] border-2 border-[#0b0910] text-[8px] font-[850] tracking-[-0.02em] shadow-[inset_0_1px_rgba(255,255,255,0.18)] ${avatarColor(player.avatar)}`}
-								title={player.name}
-							>
-								{playerInitials(player.name)}
-							</span>
-						{/each}
-					</div>
-					<div
-						class="flex items-baseline gap-1.25 text-xs font-bold text-[#787180] [&_b]:text-base [&_b]:text-(--ink)"
-					>
-						<b>{activeProgress + 1}</b><span>/</span>{party.deck.length}
-					</div>
-				</div>
-				<div class="mb-5 h-0.75 overflow-hidden rounded-[99px] bg-white/7">
-					<span
-						class="block h-full rounded-[inherit] bg-[linear-gradient(90deg,var(--rose),var(--purple))] shadow-[0_0_12px_rgba(255,92,116,0.5)] transition-[width] duration-300 ease-in-out"
-						style={`width:${(activeProgress / party.deck.length) * 100}%`}
-					></span>
-				</div>
-				{#if voteError}
-					<p class="-mt-2 mb-3 text-xs font-semibold text-[#ff8ca0]" role="alert">
-						{voteError}
-					</p>
-				{/if}
-
-				<div
-					class="relative mx-auto h-[min(58vh,560px)] min-h-107.5 w-[min(100%,380px)] perspective-[1000px] max-[380px]:min-h-97.5 min-[720px]:h-[min(62vh,575px)] [@media(max-height:760px)_and_(max-width:600px)]:h-[52vh] [@media(max-height:760px)_and_(max-width:600px)]:min-h-90"
-					aria-live="polite"
-				>
-					{#if thirdItem}
-						<div
-							class="absolute inset-0 translate-y-4.75 scale-[0.91] overflow-hidden rounded-[28px] border border-white/14 bg-[linear-gradient(145deg,#282131,#15121a)] opacity-30 shadow-[0_25px_60px_rgba(0,0,0,0.48),inset_0_1px_rgba(255,255,255,0.08)] max-[380px]:rounded-3xl"
-							aria-hidden="true"
-						></div>
-					{/if}
-					{#if nextItem}
-						<div
-							class="absolute inset-0 translate-y-2.5 scale-[0.955] overflow-hidden rounded-[28px] border border-white/14 bg-[linear-gradient(145deg,#282131,#15121a)] opacity-65 shadow-[0_25px_60px_rgba(0,0,0,0.48),inset_0_1px_rgba(255,255,255,0.08)] max-[380px]:rounded-3xl"
-							aria-hidden="true"
-						>
-							<img
-								class="pointer-events-none size-full object-cover select-none"
-								src={posterSource(nextItem)}
-								alt=""
-								onerror={useDefaultPoster}
-							/>
-						</div>
-					{/if}
-					{#if currentItem}
-						{#key currentCardKey}
-							<div
-								class="absolute inset-0 z-3 cursor-grab touch-none overflow-hidden rounded-[28px] border border-white/14 bg-[linear-gradient(145deg,#282131,#15121a)] shadow-[0_25px_60px_rgba(0,0,0,0.48),inset_0_1px_rgba(255,255,255,0.08)] will-change-transform max-[380px]:rounded-3xl"
-								class:cursor-grabbing={dragging}
-								style={cardTransform}
-								role="button"
-								tabindex="0"
-								aria-pressed={currentItem.plot?.trim() ? cardFlipped : undefined}
-								aria-label={currentItem.plot?.trim()
-									? `${currentItem.title}. ${cardFlipped ? 'Showing plot. Press Enter to return to the poster.' : 'Press Enter to show the plot.'}`
-									: `${currentItem.title}. Swipe left to pass or right to like.`}
-								onpointerdown={pointerDown}
-								onpointermove={pointerMove}
-								onpointerup={pointerUp}
-								onpointercancel={pointerCancel}
-								use:mobileSwipe
-								onkeydown={handleCardKey}
-							>
-								<div
-									class="relative size-full transition-transform duration-500 ease-[cubic-bezier(.2,.8,.2,1)] will-change-transform transform-3d motion-reduce:transition-none"
-									style={`-webkit-transform-style: preserve-3d; transform-style: preserve-3d; transform: rotateY(${cardFlipped ? 180 : 0}deg);`}
-								>
-									<div
-										class="absolute inset-0 overflow-hidden backface-hidden"
-										style="-webkit-backface-visibility: hidden; backface-visibility: hidden; -webkit-transform: translateZ(0.1px); transform: translateZ(0.1px);"
-									>
-										<img
-											class="pointer-events-none size-full object-cover select-none"
-											src={posterSource(currentItem)}
-											alt={`${currentItem.title} poster`}
-											draggable="false"
-											onerror={useDefaultPoster}
-										/>
-										<div
-											class="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,4,8,0.02)_40%,rgba(5,4,8,0.42)_67%,rgba(5,4,8,0.97)_100%)]"
-										></div>
-										{#if currentItem.plot?.trim()}
-											<div
-												class="absolute top-5 left-1/2 -translate-x-1/2 rounded-full border border-white/14 bg-black/45 px-3 py-1.5 text-[8px] font-extrabold tracking-[0.12em] text-white/75 uppercase backdrop-blur-md"
-											>
-												Tap for plot
-											</div>
-										{/if}
-										<div
-											class="absolute top-9.5 right-6 z-3 rotate-10 rounded-lg border-4 border-current px-3 py-1.75 pb-1.25 text-[25px] font-[950] tracking-[0.02em] text-(--rose) [text-shadow:0_2px_12px_rgba(0,0,0,0.3)]"
-											style={`opacity:${noStrength}`}
-										>
-											PASS
-										</div>
-										<div
-											class="absolute top-9.5 left-6 z-3 rotate-[-10deg] rounded-lg border-4 border-current px-3 py-1.75 pb-1.25 text-[25px] font-[950] tracking-[0.02em] text-(--mint) [text-shadow:0_2px_12px_rgba(0,0,0,0.3)]"
-											style={`opacity:${yesStrength}`}
-										>
-											YES!
-										</div>
-
-										<div class="absolute right-0 bottom-0 left-0 p-6.25 pt-7 text-left">
-											<div class="mb-2.25 flex items-center justify-between gap-3">
-												<div class="flex items-center gap-2.25 text-xs font-bold text-[#d2cad8]">
-													<span
-														class="rounded-[99px] border border-white/17 bg-[rgba(12,10,16,0.45)] px-2.25 py-1.25 text-[9px] font-[850] tracking-[0.12em] uppercase backdrop-blur-lg"
-														class:text-[#ff93a4]={currentItem.type === 'movie'}
-														class:text-[#9c8cff]={currentItem.type === 'series'}
-														>{mediaLabel(currentItem)}</span
-													>
-													<span>{currentItem.year}</span>
-												</div>
-												<div
-													class="inline-flex min-h-7 flex-none items-center gap-1 rounded-[9px] border border-[rgba(255,207,92,0.24)] bg-[rgba(12,10,16,0.62)] px-2 py-1.25 shadow-[inset_0_1px_rgba(255,255,255,0.06)] backdrop-blur-[10px]"
-													aria-label={ratingAriaLabel(currentItem)}
-												>
-													<span
-														class="text-[11px] text-(--gold) drop-shadow-[0_0_5px_rgba(255,207,92,0.32)]"
-														aria-hidden="true">★</span
-													>
-													<b class="text-xs leading-none tracking-[-0.02em] text-[#fff5d3]"
-														>{ratingLabel(currentItem)}</b
-													>
-													<small
-														class="ml-px text-[7px] font-[850] tracking-widest text-[#b7ad8a] uppercase"
-														>{currentItem.ratingSource ?? 'IMDb'}</small
-													>
-												</div>
-											</div>
-											<h2
-												class="m-0 max-w-[95%] text-[clamp(27px,8vw,38px)] leading-[0.98] font-[850] tracking-[-0.055em] text-balance"
-											>
-												{currentItem.title}
-											</h2>
-											<div
-												class="mt-3 flex flex-wrap gap-1.5"
-												aria-label={`Genres: ${currentItem.genres.join(', ')}`}
-											>
-												{#each currentItem.genres.slice(0, 3) as genre (genre)}
-													<span
-														class="rounded-full border border-white/11 bg-white/7.5 px-2 py-1.25 text-[8px] font-[750] tracking-[0.045em] text-[#ded8e5] shadow-[inset_0_1px_rgba(255,255,255,0.035)] backdrop-blur-lg"
-														>{genre}</span
-													>
-												{/each}
-											</div>
-										</div>
-									</div>
-									<div
-										class="absolute inset-0 transform-[rotateY(180deg)] overflow-hidden bg-[linear-gradient(145deg,#201a2b,#100e15)] backface-hidden"
-										style="-webkit-backface-visibility: hidden; backface-visibility: hidden; -webkit-transform: rotateY(180deg) translateZ(0.1px); transform: rotateY(180deg) translateZ(0.1px);"
-									>
-										<img
-											class="pointer-events-none absolute inset-0 size-full scale-110 object-cover opacity-12 blur-md select-none"
-											src={posterSource(currentItem)}
-											alt=""
-											draggable="false"
-											onerror={useDefaultPoster}
-										/>
-										<div
-											class="absolute inset-0 bg-[linear-gradient(160deg,rgba(36,27,70,.92),rgba(11,9,16,.98)_70%)]"
-										></div>
-										<div class="relative flex size-full flex-col p-6.25 text-left">
-											<div class="flex items-center justify-between gap-3">
-												<span
-													class="text-[9px] font-extrabold tracking-[0.18em] text-(--rose) uppercase"
-													>Plot</span
-												>
-												<span class="text-[9px] font-bold text-white/45">Tap to return</span>
-											</div>
-											<h2
-												class="mt-5 text-[clamp(26px,7vw,36px)] leading-[1.02] font-[850] tracking-tighter text-balance"
-											>
-												{currentItem.title}
-											</h2>
-											<div class="mt-4 flex flex-wrap gap-1.5">
-												{#each currentItem.genres.slice(0, 3) as genre (genre)}
-													<span
-														class="rounded-full border border-white/11 bg-white/7 px-2 py-1 text-[8px] font-bold text-white/70"
-														>{genre}</span
-													>
-												{/each}
-											</div>
-											<p
-												class="mt-6 min-h-0 flex-1 overflow-y-auto pr-1 text-[clamp(13px,3.6vw,15px)] leading-[1.7] whitespace-pre-line text-[#ddd7e5]"
-											>
-												{currentItem.plot}
-											</p>
-											<p
-												class="mt-5 border-t border-white/9 pt-4 text-[9px] font-bold tracking-[0.08em] text-white/40 uppercase"
-											>
-												Swipe or use the buttons when you are ready
-											</p>
-										</div>
-									</div>
-								</div>
-							</div>
-						{/key}
-					{/if}
-				</div>
-
-				<div
-					class="mt-6 flex items-center justify-center gap-6.25 [@media(max-height:760px)_and_(max-width:600px)]:mt-3.75"
-				>
-					<button
-						class="grid size-14.5 cursor-pointer place-items-center rounded-full border border-white/13 bg-white/5.5 text-(--rose) shadow-[0_12px_28px_rgba(0,0,0,0.26),inset_0_1px_rgba(255,255,255,0.08)] backdrop-blur-md transition-[transform,background] duration-150 ease-in-out hover:-translate-y-0.75 hover:scale-[1.04] hover:bg-[rgba(255,92,116,0.1)] active:scale-[0.94] [&_span]:-mt-1 [&_span]:text-[39px] [&_span]:leading-none [&_span]:font-[250]"
-						onclick={() => decide(false)}
-						aria-label="Pass"
-					>
-						<span>×</span>
-					</button>
-					<p
-						class="m-0 flex flex-col gap-px text-[10px] text-[#6f6875] [&_b]:text-[11px] [&_b]:tracking-[0.08em] [&_b]:text-[#aaa3b1] [&_b]:uppercase"
-					>
-						<b>Swipe</b><span>or tap</span>
-					</p>
-					<button
-						class="grid size-14.5 cursor-pointer place-items-center rounded-full border border-white/13 bg-white/5.5 text-(--mint) shadow-[0_12px_28px_rgba(0,0,0,0.26),inset_0_1px_rgba(255,255,255,0.08)] backdrop-blur-md transition-[transform,background] duration-150 ease-in-out hover:-translate-y-0.75 hover:scale-[1.04] hover:bg-[rgba(66,232,193,0.1)] active:scale-[0.94] [&_span]:text-[25px] [&_span]:leading-none"
-						onclick={() => decide(true)}
-						aria-label="Like"
-					>
-						<span>♥</span>
-					</button>
-				</div>
-				<p
-					class="mt-3.25 text-[9px] text-[#5f5965] [&_kbd]:rounded-sm [&_kbd]:border [&_kbd]:border-white/12 [&_kbd]:px-1.25 [&_kbd]:pt-px [&_kbd]:pb-0.5 [&_kbd]:font-[inherit] [&_span]:mx-2 [@media(max-height:760px)_and_(max-width:600px)]:hidden"
-				>
-					<kbd>←</kbd> pass <span>•</span> like <kbd>→</kbd>
-				</p>
-			</section>
+			{#key currentCardKey}
+				<SwipeDeck {party} {activeProgress} {voteError} onvote={queueVote} />
+			{/key}
 		{:else if party.phase === 'playing' && me && finishedSwiping}
 			<section
 				class="relative z-2 m-auto w-[min(100%,620px)] max-w-135 px-5.5 pt-7 pb-10.5 text-center max-[380px]:px-4"
@@ -1250,141 +643,8 @@
 					{/each}
 				</div>
 			</section>
-		{:else if party.phase === 'matched' && party.match}
-			<section
-				class="relative z-2 m-auto w-[min(100%,620px)] px-5.5 pt-5 pb-10.5 text-center max-[380px]:px-4"
-			>
-				<div
-					class="mb-3.25 inline-flex items-center gap-2.5 text-[11px] font-black tracking-[0.22em] text-(--rose) [&_span]:animate-[heartbeat_1.2s_ease-in-out_infinite] [&_span]:text-[9px]"
-				>
-					<span>♥</span> IT’S A MATCH <span>♥</span>
-				</div>
-				<h1
-					class="m-0 text-[clamp(40px,10vw,58px)] leading-[0.97] font-[850] tracking-[-0.065em] [&_em]:font-serif [&_em]:font-normal [&_em]:tracking-[-0.055em] [&_em]:text-(--rose)"
-				>
-					Tonight is <em>sorted.</em>
-				</h1>
-				<p
-					class="mx-auto mt-5.5 max-w-127.5 text-[15px] leading-[1.65] text-(--muted) [@media(max-height:760px)_and_(max-width:600px)]:mt-2.5"
-				>
-					Everyone said yes. No more scrolling.
-				</p>
-
-				<div
-					class="relative mx-auto mt-6.5 aspect-[0.7] w-[min(72vw,270px)] [@media(max-height:760px)_and_(max-width:600px)]:w-[min(57vw,230px)]"
-				>
-					<div
-						class="absolute top-1/2 left-1/2 aspect-square w-[180%] -translate-x-1/2 -translate-y-1/2 animate-[reel-spin_18s_linear_infinite] rounded-full bg-[repeating-conic-gradient(from_10deg,rgba(255,92,116,0.12)_0_8deg,transparent_8deg_21deg)] [mask:radial-gradient(circle,transparent_0_23%,black_24%_64%,transparent_65%)]"
-					></div>
-					<article
-						class="absolute inset-0 rotate-2 animate-[match-arrive_700ms_cubic-bezier(0.17,0.89,0.32,1.4)_both] overflow-hidden rounded-3xl border border-white/14 bg-[linear-gradient(145deg,#282131,#15121a)] shadow-[0_30px_80px_rgba(0,0,0,0.55),0_0_80px_rgba(255,92,116,0.16)]"
-					>
-						<img
-							class="pointer-events-none size-full object-cover select-none"
-							src={posterSource(party.match)}
-							alt={`${party.match.title} poster`}
-							onerror={useDefaultPoster}
-						/>
-						<div
-							class="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,4,8,0.02)_40%,rgba(5,4,8,0.42)_67%,rgba(5,4,8,0.97)_100%)]"
-						></div>
-						<div class="absolute right-0 bottom-0 left-0 px-4.75 pt-5.5 pb-4.5 text-left">
-							<div class="mb-2.25 flex items-center justify-between gap-1.75">
-								<div class="flex items-center gap-2.25 text-xs font-bold text-[#d2cad8]">
-									<span
-										class="rounded-[99px] border border-white/17 bg-[rgba(12,10,16,0.45)] px-2.25 py-1.25 text-[9px] font-[850] tracking-[0.12em] uppercase backdrop-blur-lg"
-										class:text-[#ff93a4]={party.match.type === 'movie'}
-										class:text-[#9c8cff]={party.match.type === 'series'}
-										>{mediaLabel(party.match)}</span
-									>
-									<span>{party.match.year}</span>
-								</div>
-								<div
-									class="inline-flex min-h-6 flex-none items-center gap-1 rounded-[9px] border border-[rgba(255,207,92,0.24)] bg-[rgba(12,10,16,0.62)] px-1.5 py-1 shadow-[inset_0_1px_rgba(255,255,255,0.06)] backdrop-blur-[10px]"
-									aria-label={ratingAriaLabel(party.match)}
-								>
-									<span
-										class="text-[11px] text-(--gold) drop-shadow-[0_0_5px_rgba(255,207,92,0.32)]"
-										aria-hidden="true">★</span
-									>
-									<b class="text-xs leading-none tracking-[-0.02em] text-[#fff5d3]"
-										>{ratingLabel(party.match)}</b
-									>
-								</div>
-							</div>
-							<h2
-								class="m-0 max-w-[95%] text-[clamp(22px,6vw,30px)] leading-[0.98] font-[850] tracking-[-0.055em] text-balance"
-							>
-								{party.match.title}
-							</h2>
-							<div
-								class="mt-2 flex flex-wrap gap-1"
-								aria-label={`Genres: ${party.match.genres.join(', ')}`}
-							>
-								{#each party.match.genres.slice(0, 3) as genre (genre)}
-									<span
-										class="rounded-full border border-white/11 bg-white/7.5 px-1.5 py-1 text-[7px] font-[750] tracking-[0.045em] text-[#ded8e5] shadow-[inset_0_1px_rgba(255,255,255,0.035)] backdrop-blur-lg"
-										>{genre}</span
-									>
-								{/each}
-							</div>
-						</div>
-					</article>
-					<div
-						class="absolute -right-4.25 bottom-9.5 grid size-13.5 animate-[heartbeat_1.2s_ease-in-out_infinite] place-items-center rounded-full border-4 border-[#0b0910] bg-[linear-gradient(145deg,#ff7b85,#f2385a)] text-xl text-white shadow-[0_10px_25px_rgba(255,63,102,0.4)]"
-					>
-						♥
-					</div>
-				</div>
-
-				<div
-					class="mt-5 flex items-center justify-center gap-3 text-[10px] font-[650] text-(--muted)"
-				>
-					<div class="flex pl-2">
-						{#each party.players as player (player.id)}
-							<span
-								class={`-ml-2 grid size-7.5 flex-none place-items-center rounded-[10px] border-2 border-[#0b0910] text-[8px] font-[850] tracking-[-0.02em] shadow-[inset_0_1px_rgba(255,255,255,0.18)] ${avatarColor(player.avatar)}`}
-								>{playerInitials(player.name)}</span
-							>
-						{/each}
-					</div>
-					<span>Matched by everyone</span>
-				</div>
-
-				<button
-					class="mx-auto mt-4.5 flex w-[min(100%,270px)] cursor-pointer items-center justify-center gap-2.5 rounded-[17px] border border-white/12 bg-white/5.5 px-4.5 py-3.25 text-xs font-extrabold tracking-[-0.02em] text-[#ddd7e5] transition-[transform,box-shadow,opacity] duration-150 ease-in-out hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(255,63,102,0.32)] active:translate-y-px active:scale-[0.99]"
-					onclick={sendAgain}>Find another <span>↻</span></button
-				>
-			</section>
 		{:else}
-			<section
-				class="relative z-2 m-auto w-[min(100%,620px)] max-w-125 px-5.5 pt-7 pb-10.5 text-center max-[380px]:px-4"
-			>
-				<div
-					class="relative mx-auto mb-6.5 grid size-25 rotate-[-7deg] grid-cols-2 gap-1.75 rounded-full border-4 border-[#7f7589] p-4.25 shadow-[inset_0_0_0_5px_#15111b] [&_i]:block [&_i]:rounded-full [&_i]:border-[3px] [&_i]:border-[#7f7589] [&_i:nth-child(3)]:absolute [&_i:nth-child(3)]:right-3.25 [&_i:nth-child(3)]:bottom-3.5 [&_i:nth-child(3)]:left-3.25 [&_i:nth-child(3)]:h-4"
-				>
-					<i></i><i></i><i></i>
-				</div>
-				<div
-					class="mb-5 inline-flex items-center gap-2 text-[11px] font-extrabold tracking-[0.18em] text-[#d7d0e2] uppercase"
-				>
-					<span class="h-px w-6 bg-(--rose) shadow-[0_0_10px_var(--rose)]"></span> Plot twist
-				</div>
-				<h1
-					class="m-0 text-[clamp(42px,11vw,68px)] leading-[0.97] font-[850] tracking-[-0.065em] [&_em]:font-serif [&_em]:font-normal [&_em]:tracking-[-0.055em] [&_em]:text-(--rose)"
-				>
-					No match<br /><em>this round.</em>
-				</h1>
-				<p class="mx-auto mt-5.5 max-w-127.5 text-[15px] leading-[1.65] text-(--muted)">
-					Great taste. Terrible overlap. Shuffle the deck and give it another shot.
-				</p>
-				<button
-					class="relative mx-auto mt-7.5 flex w-full max-w-87.5 cursor-pointer items-center justify-between rounded-[17px] border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-4.25 font-extrabold tracking-[-0.02em] text-[#120a0f] shadow-[0_14px_34px_rgba(255,63,102,0.24),inset_0_1px_rgba(255,255,255,0.35)] transition-[transform,box-shadow,opacity] duration-150 ease-in-out hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(255,63,102,0.32)] active:translate-y-px active:scale-[0.99] [&_b]:text-[23px] [&_b]:leading-none"
-					onclick={sendAgain}
-				>
-					<span>Shuffle & try again</span><b>↻</b>
-				</button>
-			</section>
+			<PartyResult {party} onagain={sendAgain} />
 		{/if}
 	</main>
 
