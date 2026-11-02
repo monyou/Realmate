@@ -193,6 +193,11 @@
 	};
 
 	const handleSubmit: SubmitFunction = ({ cancel }) => {
+		if (draft.submitting || form?.conflict) {
+			cancel();
+			return;
+		}
+
 		draft.showListErrors = true;
 		for (const item of draft.items) {
 			if (!isComplete(item)) {
@@ -600,7 +605,7 @@
 					>Cancel</a
 				><button
 					type="submit"
-					disabled={Boolean(form?.conflict)}
+					disabled={draft.submitting || Boolean(form?.conflict)}
 					class="cursor-pointer rounded-2xl border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-6 py-3.5 text-sm font-extrabold text-[#160b10] shadow-[0_12px_30px_rgba(255,63,102,.22)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
 				>
 					{form?.conflict ? 'Refresh required' : mode === 'create' ? 'Create list' : 'Save changes'} →

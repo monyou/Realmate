@@ -16,7 +16,12 @@
 	let submitting = $state(false);
 	let loadingLabel = $state('Working on it…');
 
-	const handleSubmit: SubmitFunction = ({ formElement, formData }) => {
+	const handleSubmit: SubmitFunction = ({ formElement, formData, cancel }) => {
+		if (submitting) {
+			cancel();
+			return;
+		}
+
 		loadingLabel = formElement.dataset.loadingLabel ?? 'Working on it…';
 		const closeDialogOnSuccess = formElement.dataset.closeDialogOnSuccess === 'true';
 		const removeSelectionOnSuccess = formElement.dataset.removeSelectionOnSuccess === 'true';
@@ -36,6 +41,7 @@
 	};
 
 	const confirmDelete = (list: { id: string; name: string }) => {
+		if (submitting) return;
 		deleteTarget = list;
 		deleteDialog.showModal();
 	};
@@ -88,6 +94,8 @@
 					use:enhance={handleSubmit}
 				>
 					<button
+						type="submit"
+						disabled={submitting}
 						class="cursor-pointer rounded-full border border-white/10 bg-white/4 px-4 py-2 text-xs font-bold text-white transition hover:bg-white/9"
 						>Log out</button
 					>
@@ -178,7 +186,7 @@
 					</div>
 					<button
 						type="submit"
-						disabled={selected.length === 0}
+						disabled={submitting || selected.length === 0}
 						class="cursor-pointer rounded-xl bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-3 text-sm font-extrabold text-[#160b10] disabled:cursor-default disabled:bg-white/10 disabled:bg-none disabled:text-(--muted)"
 						>Start matching <span aria-hidden="true">→</span></button
 					>
@@ -361,10 +369,10 @@
 		bind:this={deleteDialog}
 		oncancel={(event) => {
 			event.preventDefault();
-			cancelDelete();
+			if (!submitting) cancelDelete();
 		}}
 		onclick={(event) => {
-			if (event.target === deleteDialog) cancelDelete();
+			if (event.target === deleteDialog && !submitting) cancelDelete();
 		}}
 		class="m-auto box-border w-[min(92vw,460px)] rounded-[26px] border border-white/12 bg-[#14111a] p-0 text-(--ink) shadow-[0_30px_100px_rgba(0,0,0,.65)] backdrop:bg-black/75"
 	>
@@ -389,12 +397,14 @@
 				<input type="hidden" name="listId" value={deleteTarget?.id ?? ''} />
 				<button
 					type="button"
+					disabled={submitting}
 					onclick={cancelDelete}
 					class="cursor-pointer rounded-xl border border-white/10 bg-white/3 px-4 py-3 text-sm font-bold text-white"
 					>Cancel</button
 				>
 				<button
 					type="submit"
+					disabled={submitting}
 					class="cursor-pointer rounded-xl border border-[#ff5c74]/35 bg-[#ff5c74]/12 px-4 py-3 text-sm font-extrabold text-[#ff9aac]"
 					>Delete list</button
 				>
