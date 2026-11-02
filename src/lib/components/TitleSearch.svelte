@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { resolve } from '$app/paths';
 	import type { MediaItem } from '#lib/types.js';
 
@@ -10,9 +11,18 @@
 	let message = $state('');
 	let busy = $state(false);
 	let version = 0;
+	let activeRequest: AbortController | undefined;
+
+	onDestroy(cancelSearch);
+
+	function cancelSearch() {
+		version++;
+		activeRequest?.abort();
+		activeRequest = undefined;
+	}
 
 	function reset() {
-		version++;
+		cancelSearch();
 		results = [];
 		message = '';
 		busy = false;
@@ -22,10 +32,13 @@
 		if (busy || !query.trim()) return;
 		reset();
 		const request = version;
+		const controller = new AbortController();
+		activeRequest = controller;
 		busy = true;
 		try {
 			const response = await fetch(
-				resolve('/api/titles/search') + '?' + new URLSearchParams({ q: query.trim() })
+				resolve('/api/titles/search') + '?' + new URLSearchParams({ q: query.trim() }),
+				{ signal: controller.signal }
 			);
 			if (request !== version) return;
 			if (!response.ok) {
@@ -45,7 +58,10 @@
 			if (request === version)
 				message = 'Search is unavailable. Try again or add this title manually.';
 		} finally {
-			if (request === version) busy = false;
+			if (request === version) {
+				busy = false;
+				activeRequest = undefined;
+			}
 		}
 	}
 
