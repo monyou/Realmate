@@ -266,7 +266,7 @@
 			while (!session.requests.signal.aborted && pendingVotes.length > 0) {
 				const vote = pendingVotes[0];
 				let response: PartyResponse | null = null;
-				for (let attempt = 0; attempt < 2 && !response; attempt += 1) {
+				for (let attempt = 0; attempt < 2 && !response && pendingVotes[0] === vote; attempt += 1) {
 					response = await requestParty(
 						{
 							type: 'vote',
@@ -278,6 +278,9 @@
 					);
 					if (session.requests.signal.aborted) return;
 				}
+
+				// A round change can replace the queue while this request is in flight.
+				if (pendingVotes[0] !== vote) continue;
 
 				if (!response) {
 					pendingVotes = [];
