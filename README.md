@@ -19,7 +19,7 @@ Built with SvelteKit 3, Svelte 5, TypeScript, Tailwind CSS 4, Supabase Auth/Post
 2. After authentication, the visitor reaches `/profile`.
 3. **New list** opens a form where multiple movies or series can be added, while **Generate list** randomly samples matching TMDB results.
 4. The profile shows every saved list with a checkbox.
-5. Selecting one or more lists reveals **Start matching**.
+5. Selecting one or more lists enables **Start matching**.
 6. Realmate combines the selected lists, creates a Redis-backed room, and shows its copyable room code.
 7. Guests can open Realmate, choose **Join party**, and enter the code without creating an account. At least two connected people are required to start swiping.
 

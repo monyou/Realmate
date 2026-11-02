@@ -163,20 +163,26 @@
 				data-loading-label="Starting your party…"
 				use:enhance={handleSubmit}
 			>
-				{#if selected.length > 0}
-					<div
-						class="mb-5 flex items-center justify-between gap-4 rounded-2xl border border-white/12 bg-[#18141f]/95 p-3 pl-5 shadow-[0_16px_50px_rgba(0,0,0,.3)] backdrop-blur-xl"
-					>
-						<span class="text-xs font-bold text-(--muted)"
-							>{selected.length} {selected.length === 1 ? 'list' : 'lists'} selected</span
-						>
-						<button
-							type="submit"
-							class="cursor-pointer rounded-xl border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-3 text-sm font-extrabold text-[#160b10]"
-							>Start matching →</button
-						>
+				<div
+					class="mb-5 flex flex-col gap-3 rounded-2xl border border-white/12 bg-[#18141f] p-4 min-[520px]:flex-row min-[520px]:items-center min-[520px]:justify-between"
+				>
+					<div>
+						<h2 class="font-bold">Choose lists for tonight’s room</h2>
+						<p role="status" class="mt-1 text-sm text-(--muted)">
+							{#if selected.length}
+								{selected.length} {selected.length === 1 ? 'list' : 'lists'} selected
+							{:else}
+								Select at least one list to start.
+							{/if}
+						</p>
 					</div>
-				{/if}
+					<button
+						type="submit"
+						disabled={selected.length === 0}
+						class="cursor-pointer rounded-xl bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-3 text-sm font-extrabold text-[#160b10] disabled:cursor-default disabled:bg-white/10 disabled:bg-none disabled:text-(--muted)"
+						>Start matching <span aria-hidden="true">→</span></button
+					>
+				</div>
 				{#if form?.message}<p class="mb-4 text-sm text-(--gold)" role="alert">
 						{form.message}
 					</p>{/if}
