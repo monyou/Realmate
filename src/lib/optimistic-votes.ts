@@ -22,7 +22,11 @@ export const optimisticPlayerProgress = (
 	);
 };
 
-export const voteWasAcknowledged = (state: PartyState, playerId: string, vote: QueuedVote) => {
+export const voteWasAcknowledged = (
+	state: Pick<PartyState, 'roundId' | 'phase' | 'players'>,
+	playerId: string,
+	vote: QueuedVote
+) => {
 	if (state.roundId !== vote.roundId || state.phase !== 'playing') return true;
 	const confirmed = state.players.find((player) => player.id === playerId)?.progress ?? 0;
 	return confirmed > vote.position;

@@ -8,6 +8,7 @@
 		voteWasAcknowledged,
 		type QueuedVote
 	} from '#lib/optimistic-votes.js';
+	import { restorePartyState, type PartyResponse } from '#lib/party-response.js';
 	import { isRoomId, normalizeRoomCode, partyRoomPath } from '#lib/party-room.js';
 	import type { MediaItem, PartyState } from '#lib/types.js';
 	import type { PageData } from './$types';
@@ -71,7 +72,6 @@
 		| { type: 'again'; roundId: string }
 		| { type: 'leave' };
 
-	type PartyResponse = { playerId: string; state: PartyState };
 	const swipeCardKey = (state: PartyState | null, progress: number) => {
 		const activeItem = state?.phase === 'playing' ? (state.deck[progress] ?? null) : null;
 		return `${state?.roundId ?? 'no-round'}:${progress}:${activeItem?.id ?? 'no-card'}`;
@@ -143,21 +143,19 @@
 	}
 
 	function partyEndpoint() {
-		return `/api/party?room=${encodeURIComponent(roomId)}`;
+		const knownRound = party?.roundId ? `&knownRound=${encodeURIComponent(party.roundId)}` : '';
+		return `/api/party?room=${encodeURIComponent(roomId)}${knownRound}`;
 	}
 
 	function applyResponse(response: PartyResponse) {
 		if (!party || response.state.revision >= party.revision) {
-			if (response.state.roundId !== party?.roundId || response.state.phase !== 'playing') {
+			const state = restorePartyState(response.state, party);
+			if (state.roundId !== party?.roundId || state.phase !== 'playing') {
 				pendingVotes = [];
 			}
-			const incomingProgress = optimisticPlayerProgress(
-				response.state,
-				response.playerId,
-				pendingVotes
-			);
-			if (swipeCardKey(response.state, incomingProgress) !== currentCardKey) resetCard();
-			party = response.state;
+			const incomingProgress = optimisticPlayerProgress(state, response.playerId, pendingVotes);
+			if (swipeCardKey(state, incomingProgress) !== currentCardKey) resetCard();
+			party = state;
 		}
 		playerId = response.playerId;
 		connected = true;

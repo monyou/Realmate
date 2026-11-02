@@ -1,3 +1,4 @@
+import { partyResponse } from '#lib/party-response.js';
 import type { RequestHandler } from './$types';
 import { mutateParty, PartyNotFoundError, readParty } from '#lib/server/party-store.js';
 import { getPlayerIdentity } from '#lib/server/player-identity.js';
@@ -26,7 +27,11 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 	try {
 		const playerId = getPlayerIdentity(cookies, url.protocol === 'https:');
 		return Response.json(
-			{ playerId, state: await readParty(url.searchParams.get('room') ?? '') },
+			partyResponse(
+				playerId,
+				await readParty(url.searchParams.get('room') ?? ''),
+				url.searchParams.get('knownRound')
+			),
 			{ headers: noStore }
 		);
 	} catch (error) {
@@ -72,7 +77,9 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 			}
 		});
 
-		return Response.json({ playerId, state }, { headers: noStore });
+		return Response.json(partyResponse(playerId, state, url.searchParams.get('knownRound')), {
+			headers: noStore
+		});
 	} catch (error) {
 		return failure(error);
 	}
