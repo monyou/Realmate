@@ -1344,7 +1344,7 @@
 	</main>
 
 	<footer
-		class="relative z-2 flex items-center justify-center gap-2.5 px-5 pt-2 pb-[max(18px,env(safe-area-inset-bottom))] text-[9px] tracking-[0.04em] text-[#514b57]"
+		class="relative z-2 flex items-center justify-center gap-2.5 px-5 pt-2 pb-[max(18px,env(safe-area-inset-bottom))] text-[11px] tracking-[0.04em] text-(--muted)"
 	>
 		<span class="font-extrabold">realmate</span>
 		<i class="size-0.75 rounded-full bg-[#514b57]"></i>
