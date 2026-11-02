@@ -8,9 +8,32 @@ const noStore = { 'cache-control': 'no-store, max-age=0' };
 type PartyAction =
 	| { type: 'hello'; name?: unknown }
 	| { type: 'start' }
-	| { type: 'vote'; roundId?: unknown; itemId?: unknown; liked?: unknown }
-	| { type: 'again'; roundId?: unknown }
+	| { type: 'vote'; roundId: string; itemId: string; liked: boolean }
+	| { type: 'again'; roundId: string }
 	| { type: 'leave' };
+
+const isPartyAction = (value: unknown): value is PartyAction => {
+	if (!value || typeof value !== 'object' || !('type' in value)) return false;
+	switch (value.type) {
+		case 'hello':
+		case 'start':
+		case 'leave':
+			return true;
+		case 'vote':
+			return (
+				'roundId' in value &&
+				typeof value.roundId === 'string' &&
+				'itemId' in value &&
+				typeof value.itemId === 'string' &&
+				'liked' in value &&
+				typeof value.liked === 'boolean'
+			);
+		case 'again':
+			return 'roundId' in value && typeof value.roundId === 'string';
+		default:
+			return false;
+	}
+};
 
 const failure = (error: unknown) => {
 	if (error instanceof PartyNotFoundError) {
@@ -40,8 +63,23 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 };
 
 export const POST: RequestHandler = async ({ request, cookies, url }) => {
+	let action: unknown;
 	try {
-		const action = (await request.json()) as PartyAction;
+		action = await request.json();
+	} catch {
+		return Response.json(
+			{ message: 'The party request could not be read.' },
+			{ status: 400, headers: noStore }
+		);
+	}
+	if (!isPartyAction(action)) {
+		return Response.json(
+			{ message: 'The party action is invalid.' },
+			{ status: 400, headers: noStore }
+		);
+	}
+
+	try {
 		const playerId = getPlayerIdentity(cookies, url.protocol === 'https:');
 
 		const roomId = url.searchParams.get('room') ?? '';
@@ -54,13 +92,6 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 				case 'start':
 					return engine.start({ playerId });
 				case 'vote':
-					if (
-						typeof action.roundId !== 'string' ||
-						typeof action.itemId !== 'string' ||
-						typeof action.liked !== 'boolean'
-					) {
-						return engine.snapshot();
-					}
 					return engine.vote({
 						playerId,
 						roundId: action.roundId,
@@ -68,12 +99,9 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 						liked: action.liked
 					});
 				case 'again':
-					if (typeof action.roundId !== 'string') return engine.snapshot();
 					return engine.playAgain({ playerId, roundId: action.roundId });
 				case 'leave':
 					return engine.markDisconnected(playerId);
-				default:
-					return engine.snapshot();
 			}
 		});
 
