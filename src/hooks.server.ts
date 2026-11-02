@@ -1,11 +1,19 @@
 import type { Handle } from '@sveltejs/kit/hooks';
 import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_PUBLISHABLE_KEY } from '$app/env/public';
 import { createServerClient } from '@supabase/ssr';
+import type { User } from '@supabase/supabase-js';
 import type { Database } from '#lib/types.js';
 
 export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.supabase = null;
-	event.locals.user = null;
+	let userLookup: Promise<User | null> | undefined;
+	event.locals.getUser = () => {
+		if (!event.locals.supabase) return Promise.resolve(null);
+		userLookup ??= event.locals.supabase.auth
+			.getUser()
+			.then(({ data, error }) => (error ? null : data.user));
+		return userLookup;
+	};
 	// Supabase may update PKCE/session storage more than once during one request.
 	// Buffer its response headers so SvelteKit receives each header only once.
 	const supabaseResponseHeaders = new Headers();
@@ -18,6 +26,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 				cookies: {
 					getAll: () => event.cookies.getAll(),
 					setAll: (cookiesToSet, headers) => {
+						// Session cookie changes invalidate the request's cached identity.
+						userLookup = undefined;
 						for (const { name, value, options } of cookiesToSet) {
 							event.cookies.set(name, value, { ...options, path: '/' });
 						}
