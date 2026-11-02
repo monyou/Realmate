@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { asset, resolve } from '$app/paths';
 	import Confetti from '#lib/components/Confetti.svelte';
 	import RealmateLogo from '#lib/components/RealmateLogo.svelte';
@@ -30,7 +30,14 @@
 		"url(\"data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E\")";
 	const defaultPoster = asset('assets/default_poster.jpeg');
 	let party = $state<PartyState | null>(null);
-	let roomId = $derived(data.roomId);
+	const roomId = $derived(data.roomId);
+	type RoomSession = {
+		id: string;
+		requests: AbortController;
+		pollInFlight: boolean;
+		voteQueueRunning: boolean;
+	};
+	let roomSession: RoomSession | null = null;
 	let roomCode = $state('');
 	let joinCode = $state('');
 	let joinInput: HTMLInputElement;
@@ -53,12 +60,10 @@
 	let pointerMoved = false;
 	let activeTouchId: number | null = null;
 	let pendingVotes = $state<QueuedVote[]>([]);
-	let voteQueueRunning = false;
 	let voteSendTimer: ReturnType<typeof setTimeout> | undefined;
 	let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
 	let pollTimer: ReturnType<typeof setInterval> | undefined;
 	let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
-	let pollInFlight = false;
 
 	type PartyAction =
 		| { type: 'hello'; name: string }
@@ -99,52 +104,75 @@
 	);
 	const currentCardKey = $derived(swipeCardKey(party, activeProgress));
 
-	onMount(() => {
+	$effect(() => {
+		const id = roomId;
+		return untrack(() => setupRoom(id));
+	});
+
+	function setupRoom(id: string) {
+		const session: RoomSession = {
+			id,
+			requests: new AbortController(),
+			pollInFlight: false,
+			voteQueueRunning: false
+		};
+		roomSession = session;
+		party = null;
+		pendingVotes = [];
+		playerId = '';
+		connected = false;
+		joinError = '';
+		voteError = '';
+		roomMissing = false;
+		copyStatus = 'idle';
+		joinPartyOpen = false;
+		codeError = '';
+		resetCard();
+
 		const guestSeed = localStorage.getItem('realmate-guest-seed') ?? crypto.randomUUID();
 		localStorage.setItem('realmate-guest-seed', guestSeed);
 		playerName = localStorage.getItem('realmate-player-name') ?? makeGuestName(guestSeed);
 		localStorage.setItem('realmate-player-name', playerName);
-		let stopped = false;
-		roomCode = roomId;
-		joinCode = roomId;
+		roomCode = id;
+		joinCode = id;
 		pageReady = true;
 
-		if (roomId) {
+		if (id) {
 			void (async () => {
-				const joined = await requestParty({ type: 'hello', name: playerName });
-				if (stopped || !joined) return;
-				startPolling();
+				const joined = await requestParty({ type: 'hello', name: playerName }, session);
+				if (session.requests.signal.aborted || !joined) return;
+				startPolling(session);
 			})();
 		}
 
 		return () => {
-			stopped = true;
+			session.requests.abort();
 			if (pollTimer) clearInterval(pollTimer);
 			if (heartbeatTimer) clearInterval(heartbeatTimer);
 			if (voteSendTimer) clearTimeout(voteSendTimer);
 			if (copyResetTimer) clearTimeout(copyResetTimer);
-			if (roomId) {
+			if (id) {
 				navigator.sendBeacon(
-					partyEndpoint(),
+					`/api/party?room=${encodeURIComponent(id)}`,
 					new Blob([JSON.stringify({ type: 'leave' })], { type: 'application/json' })
 				);
 			}
 		};
-	});
+	}
 
-	function startPolling() {
+	function startPolling(session: RoomSession) {
 		if (pollTimer) clearInterval(pollTimer);
 		if (heartbeatTimer) clearInterval(heartbeatTimer);
-		pollTimer = setInterval(() => void refreshParty(), 900);
+		pollTimer = setInterval(() => void refreshParty(session), 900);
 		heartbeatTimer = setInterval(
-			() => void requestParty({ type: 'hello', name: playerName }),
+			() => void requestParty({ type: 'hello', name: playerName }, session),
 			3_000
 		);
 	}
 
-	function partyEndpoint() {
+	function partyEndpoint(session: RoomSession) {
 		const knownRound = party?.roundId ? `&knownRound=${encodeURIComponent(party.roundId)}` : '';
-		return `/api/party?room=${encodeURIComponent(roomId)}${knownRound}`;
+		return `/api/party?room=${encodeURIComponent(session.id)}${knownRound}`;
 	}
 
 	function applyResponse(response: PartyResponse) {
@@ -161,25 +189,33 @@
 		connected = true;
 	}
 
-	async function requestParty(action: PartyAction): Promise<PartyResponse | null> {
+	async function requestParty(
+		action: PartyAction,
+		session = roomSession
+	): Promise<PartyResponse | null> {
+		if (!session?.id || session.requests.signal.aborted) return null;
 		try {
-			const response = await fetch(partyEndpoint(), {
+			const response = await fetch(partyEndpoint(session), {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify(action),
-				keepalive: action.type === 'vote'
+				keepalive: action.type === 'vote',
+				signal: session.requests.signal
 			});
 			if (!response.ok) {
 				const body = (await response.json().catch(() => null)) as { message?: string } | null;
+				if (session.requests.signal.aborted) return null;
 				roomMissing = response.status === 404;
 				throw new Error(body?.message ?? `Party request failed (${response.status})`);
 			}
 			const partyResponse = (await response.json()) as PartyResponse;
+			if (session.requests.signal.aborted) return null;
 			applyResponse(partyResponse);
 			joinError = '';
 			roomMissing = false;
 			return partyResponse;
 		} catch (error) {
+			if (session.requests.signal.aborted) return null;
 			if (!roomMissing) console.error(error);
 			connected = false;
 			joinError = error instanceof Error ? error.message : 'The watch party is unavailable.';
@@ -187,23 +223,29 @@
 		}
 	}
 
-	async function refreshParty() {
-		if (pollInFlight) return;
-		pollInFlight = true;
+	async function refreshParty(session = roomSession) {
+		if (!session?.id || session.pollInFlight || session.requests.signal.aborted) return;
+		session.pollInFlight = true;
 		try {
-			const response = await fetch(partyEndpoint(), { cache: 'no-store' });
+			const response = await fetch(partyEndpoint(session), {
+				cache: 'no-store',
+				signal: session.requests.signal
+			});
 			if (!response.ok) {
 				const body = (await response.json().catch(() => null)) as { message?: string } | null;
 				throw new Error(body?.message ?? `Party refresh failed (${response.status})`);
 			}
-			applyResponse((await response.json()) as PartyResponse);
+			const update = (await response.json()) as PartyResponse;
+			if (session.requests.signal.aborted) return;
+			applyResponse(update);
 			joinError = '';
 		} catch (error) {
+			if (session.requests.signal.aborted) return;
 			console.error(error);
 			connected = false;
 			joinError = error instanceof Error ? error.message : 'The watch party is unavailable.';
 		} finally {
-			pollInFlight = false;
+			session.pollInFlight = false;
 		}
 	}
 
@@ -296,20 +338,25 @@
 	}
 
 	async function flushVoteQueue() {
-		if (voteQueueRunning) return;
-		voteQueueRunning = true;
+		const session = roomSession;
+		if (!session?.id || session.requests.signal.aborted || session.voteQueueRunning) return;
+		session.voteQueueRunning = true;
 
 		try {
-			while (pendingVotes.length > 0) {
+			while (!session.requests.signal.aborted && pendingVotes.length > 0) {
 				const vote = pendingVotes[0];
 				let response: PartyResponse | null = null;
 				for (let attempt = 0; attempt < 2 && !response; attempt += 1) {
-					response = await requestParty({
-						type: 'vote',
-						roundId: vote.roundId,
-						itemId: vote.itemId,
-						liked: vote.liked
-					});
+					response = await requestParty(
+						{
+							type: 'vote',
+							roundId: vote.roundId,
+							itemId: vote.itemId,
+							liked: vote.liked
+						},
+						session
+					);
+					if (session.requests.signal.aborted) return;
 				}
 
 				if (!response) {
@@ -329,8 +376,8 @@
 				pendingVotes = pendingVotes.slice(1);
 			}
 		} finally {
-			voteQueueRunning = false;
-			if (pendingVotes.length > 0) void flushVoteQueue();
+			session.voteQueueRunning = false;
+			if (!session.requests.signal.aborted && pendingVotes.length > 0) void flushVoteQueue();
 		}
 	}
 
