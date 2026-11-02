@@ -35,6 +35,8 @@
 		const controller = new AbortController();
 		activeRequest = controller;
 		busy = true;
+		// Allow the server's 15-second TMDB timeout to finish before cancelling locally.
+		const timeout = setTimeout(() => controller.abort(), 20_000);
 		try {
 			const response = await fetch(
 				resolve('/api/titles/search') + '?' + new URLSearchParams({ q: query.trim() }),
@@ -58,6 +60,7 @@
 			if (request === version)
 				message = 'Search is unavailable. Try again or add this title manually.';
 		} finally {
+			clearTimeout(timeout);
 			if (request === version) {
 				busy = false;
 				activeRequest = undefined;

@@ -22,7 +22,7 @@
 		}
 
 		loadingLabel = formElement.dataset.loadingLabel ?? 'Working on it…';
-		const closeDialogOnSuccess = formElement.dataset.closeDialogOnSuccess === 'true';
+		const closeDialogOnResult = formElement.dataset.closeDialogOnResult === 'true';
 		const removeSelectionOnSuccess = formElement.dataset.removeSelectionOnSuccess === 'true';
 		const submittedListId = removeSelectionOnSuccess ? String(formData.get('listId') ?? '') : '';
 		submitting = true;
@@ -30,8 +30,8 @@
 			try {
 				if (result.type === 'success') {
 					selected = selectionAfterDelete(selected, submittedListId, removeSelectionOnSuccess);
-					if (closeDialogOnSuccess) cancelDelete();
 				}
+				if (closeDialogOnResult) cancelDelete();
 				await update();
 			} finally {
 				submitting = false;
@@ -367,7 +367,7 @@
 				action="?/deleteList"
 				class="mt-6 flex justify-end gap-3"
 				data-loading-label="Deleting your list…"
-				data-close-dialog-on-success="true"
+				data-close-dialog-on-result="true"
 				data-remove-selection-on-success="true"
 				use:enhance={handleSubmit}
 			>
