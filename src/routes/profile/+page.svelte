@@ -11,14 +11,18 @@
 	let selected = $state<string[]>([]);
 	let shareList = $state<{ id: string; name: string } | null>(null);
 	let deleteTarget = $state<{ id: string; name: string } | null>(null);
-	let openListDetails = $state<string | null>(null);
 	let deleteDialog: HTMLDialogElement;
 	let submitting = $state(false);
 	let loadingLabel = $state('Working on it…');
 
-	const handleSubmit: SubmitFunction = ({ formElement, formData }) => {
+	const handleSubmit: SubmitFunction = ({ formElement, formData, cancel }) => {
+		if (submitting) {
+			cancel();
+			return;
+		}
+
 		loadingLabel = formElement.dataset.loadingLabel ?? 'Working on it…';
-		const closeDialogOnSuccess = formElement.dataset.closeDialogOnSuccess === 'true';
+		const closeDialogOnResult = formElement.dataset.closeDialogOnResult === 'true';
 		const removeSelectionOnSuccess = formElement.dataset.removeSelectionOnSuccess === 'true';
 		const submittedListId = removeSelectionOnSuccess ? String(formData.get('listId') ?? '') : '';
 		submitting = true;
@@ -26,8 +30,8 @@
 			try {
 				if (result.type === 'success') {
 					selected = selectionAfterDelete(selected, submittedListId, removeSelectionOnSuccess);
-					if (closeDialogOnSuccess) cancelDelete();
 				}
+				if (closeDialogOnResult) cancelDelete();
 				await update();
 			} finally {
 				submitting = false;
@@ -36,16 +40,13 @@
 	};
 
 	const confirmDelete = (list: { id: string; name: string }) => {
+		if (submitting) return;
 		deleteTarget = list;
 		deleteDialog.showModal();
 	};
 	const cancelDelete = () => {
 		deleteDialog.close();
 		deleteTarget = null;
-	};
-	const toggleListDetails = (event: MouseEvent, listId: string) => {
-		event.stopPropagation();
-		openListDetails = openListDetails === listId ? null : listId;
 	};
 
 	const formatDate = (value: string) =>
@@ -58,13 +59,6 @@
 	<title>Your lists — Realmate</title>
 	<meta name="description" content="Manage your Realmate movie and series lists." />
 </svelte:head>
-
-<svelte:window
-	onclick={() => (openListDetails = null)}
-	onkeydown={(event) => {
-		if (event.key === 'Escape') openListDetails = null;
-	}}
-/>
 
 <div class="relative isolate min-h-dvh overflow-hidden bg-[#0b0910] text-(--ink)">
 	<div
@@ -88,6 +82,8 @@
 					use:enhance={handleSubmit}
 				>
 					<button
+						type="submit"
+						disabled={submitting}
 						class="cursor-pointer rounded-full border border-white/10 bg-white/4 px-4 py-2 text-xs font-bold text-white transition hover:bg-white/9"
 						>Log out</button
 					>
@@ -163,25 +159,31 @@
 				data-loading-label="Starting your party…"
 				use:enhance={handleSubmit}
 			>
-				{#if selected.length > 0}
-					<div
-						class="mb-5 flex items-center justify-between gap-4 rounded-2xl border border-white/12 bg-[#18141f]/95 p-3 pl-5 shadow-[0_16px_50px_rgba(0,0,0,.3)] backdrop-blur-xl"
-					>
-						<span class="text-xs font-bold text-(--muted)"
-							>{selected.length} {selected.length === 1 ? 'list' : 'lists'} selected</span
-						>
-						<button
-							type="submit"
-							class="cursor-pointer rounded-xl border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-3 text-sm font-extrabold text-[#160b10]"
-							>Start matching →</button
-						>
+				<div
+					class="mb-5 flex flex-col gap-3 rounded-2xl border border-white/12 bg-[#18141f] p-4 min-[520px]:flex-row min-[520px]:items-center min-[520px]:justify-between"
+				>
+					<div>
+						<h2 class="font-bold">Choose lists for tonight’s room</h2>
+						<p role="status" class="mt-1 text-sm text-(--muted)">
+							{#if selected.length}
+								{selected.length} {selected.length === 1 ? 'list' : 'lists'} selected
+							{:else}
+								Select at least one list to start.
+							{/if}
+						</p>
 					</div>
-				{/if}
+					<button
+						type="submit"
+						disabled={submitting || selected.length === 0}
+						class="cursor-pointer rounded-xl bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-3 text-sm font-extrabold text-[#160b10] disabled:cursor-default disabled:bg-white/10 disabled:bg-none disabled:text-(--muted)"
+						>Start matching <span aria-hidden="true">→</span></button
+					>
+				</div>
 				{#if form?.message}<p class="mb-4 text-sm text-(--gold)" role="alert">
 						{form.message}
 					</p>{/if}
 				<div
-					class="overflow-visible rounded-[26px] border border-white/9 bg-[linear-gradient(145deg,rgba(28,24,38,.9),rgba(15,13,20,.96))] shadow-[0_22px_70px_rgba(0,0,0,.25)] min-[720px]:overflow-hidden"
+					class="overflow-hidden rounded-[26px] border border-white/9 bg-[linear-gradient(145deg,rgba(28,24,38,.9),rgba(15,13,20,.96))] shadow-[0_22px_70px_rgba(0,0,0,.25)]"
 				>
 					<div
 						class="hidden grid-cols-[32px_28px_minmax(0,1fr)_90px_120px_120px] gap-4 border-b border-white/7 px-5 py-3 text-[10px] font-extrabold tracking-[0.14em] text-(--muted) uppercase min-[720px]:grid"
@@ -191,119 +193,25 @@
 					</div>
 					{#each data.lists as list (list.id)}
 						<div
-							class="grid grid-cols-[34px_26px_minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-white/6 px-4 py-5 transition last:border-0 hover:bg-white/3 min-[720px]:grid-cols-[32px_28px_minmax(0,1fr)_90px_120px_120px] min-[720px]:gap-4 min-[720px]:px-5"
+							class="flex flex-col gap-4 border-b border-white/6 px-4 py-5 transition last:border-0 hover:bg-white/3 min-[720px]:grid min-[720px]:grid-cols-[32px_28px_minmax(0,1fr)_90px_120px_120px] min-[720px]:items-center min-[720px]:gap-4 min-[720px]:px-5"
 						>
-							<input
-								type="checkbox"
-								name="listId"
-								value={list.id}
-								bind:group={selected}
-								aria-label={`Select ${list.name}`}
-								class="size-4.5 cursor-pointer accent-[#ff5c74]"
-							/>
-							<span class="grid size-7 place-items-center text-(--purple)">
-								{#if list.isShared}
-									<svg
-										viewBox="0 0 24 24"
-										class="size-4"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										aria-label={`${list.name} is shared`}
-										role="img"
-									>
-										<circle cx="18" cy="5" r="3"></circle>
-										<circle cx="6" cy="12" r="3"></circle>
-										<circle cx="18" cy="19" r="3"></circle>
-										<path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"></path>
-									</svg>
-								{/if}
-							</span>
-							<div class="relative min-w-0 min-[720px]:hidden">
-								<button
-									type="button"
-									onclick={(event) => toggleListDetails(event, list.id)}
-									aria-label={`Show full name and description for ${list.name}`}
-									aria-expanded={openListDetails === list.id}
-									aria-describedby={openListDetails === list.id
-										? `list-details-${list.id}`
-										: undefined}
-									class="block w-full min-w-0 cursor-pointer border-0 bg-transparent p-0 text-left"
+							<div class="flex items-start gap-3 min-[720px]:contents">
+								<label
+									for={`select-list-${list.id}`}
+									class="-my-2 grid min-h-11 w-8 shrink-0 cursor-pointer place-items-center min-[720px]:my-0 min-[720px]:min-h-0"
 								>
-									<strong class="block truncate text-sm text-white">{list.name}</strong>
-									{#if list.description}<small
-											class="mt-1 block truncate text-[11px] text-(--muted)"
-											>{list.description}</small
-										>{/if}
-								</button>
-								{#if openListDetails === list.id}
-									<div
-										id={`list-details-${list.id}`}
-										role="tooltip"
-										class="absolute top-[calc(100%+10px)] left-0 z-50 w-[min(72vw,320px)] rounded-2xl border border-white/14 bg-[#18141f] p-4 text-left shadow-[0_18px_50px_rgba(0,0,0,.55)]"
-									>
-										<strong class="block text-sm leading-snug wrap-break-word text-white"
-											>{list.name}</strong
-										>
-										<p class="mt-2 text-xs leading-relaxed wrap-break-word text-(--muted)">
-											{list.description || 'No description'}
-										</p>
-									</div>
-								{/if}
-							</div>
-							<span
-								class="hidden min-w-0 min-[720px]:block"
-								title={list.description ? `${list.name} — ${list.description}` : list.name}
-							>
-								<strong class="block truncate text-sm text-white">{list.name}</strong>
-
-								{#if list.description}
-									<small class="mt-1 block truncate text-[11px] text-(--muted)"
-										>{list.description}</small
-									>
-								{/if}
-							</span>
-
-							<span class="text-xs font-bold text-[#d7d0e2]">
-								{list.itemCount}
-								<span class="ml-1 min-[720px]:hidden">titles</span>
-							</span>
-
-							<span class="hidden text-xs text-(--muted) min-[720px]:block"
-								>{formatDate(list.updatedAt)}</span
-							>
-
-							<div class="flex justify-end gap-1">
-								<a
-									href={resolve('/profile/lists/[id]/edit', { id: list.id })}
-									aria-label={`Edit ${list.name}`}
-									title={`Edit ${list.name}`}
-									class="grid size-9 place-items-center rounded-xl border border-white/10 bg-white/4 text-(--muted) no-underline transition hover:border-(--purple)/50 hover:bg-(--purple)/10 hover:text-white"
-								>
-									<svg
-										viewBox="0 0 24 24"
-										class="size-4"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										aria-hidden="true"
-									>
-										<path d="M12 20h9"></path>
-										<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
-									</svg>
-								</a>
-								{#if list.isOwner}
-									<button
-										type="button"
-										onclick={() => (shareList = { id: list.id, name: list.name })}
-										aria-label={`Share ${list.name}`}
-										title={`Share ${list.name}`}
-										class="grid size-9 cursor-pointer place-items-center rounded-xl border border-white/10 bg-white/4 text-(--muted) transition hover:border-(--purple)/50 hover:bg-(--purple)/10 hover:text-white"
-									>
+									<input
+										id={`select-list-${list.id}`}
+										type="checkbox"
+										name="listId"
+										value={list.id}
+										bind:group={selected}
+										aria-label={`Select ${list.name}`}
+										class="size-4.5 cursor-pointer accent-[#ff5c74]"
+									/>
+								</label>
+								<span class="hidden size-7 place-items-center text-(--purple) min-[720px]:grid">
+									{#if list.isShared}
 										<svg
 											viewBox="0 0 24 24"
 											class="size-4"
@@ -312,20 +220,57 @@
 											stroke-width="2"
 											stroke-linecap="round"
 											stroke-linejoin="round"
-											aria-hidden="true"
+											aria-label={`${list.name} is shared`}
+											role="img"
 										>
 											<circle cx="18" cy="5" r="3"></circle>
 											<circle cx="6" cy="12" r="3"></circle>
 											<circle cx="18" cy="19" r="3"></circle>
 											<path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"></path>
 										</svg>
-									</button>
-									<button
-										type="button"
-										onclick={() => confirmDelete({ id: list.id, name: list.name })}
-										aria-label={`Delete ${list.name}`}
-										title={`Delete ${list.name}`}
-										class="grid size-9 cursor-pointer place-items-center rounded-xl border border-white/10 bg-white/4 text-(--muted) transition hover:border-[#ff5c74]/50 hover:bg-[#ff5c74]/10 hover:text-[#ff8ca0]"
+									{/if}
+								</span>
+								<div class="min-w-0 flex-1">
+									<label for={`select-list-${list.id}`} class="block cursor-pointer">
+										<strong
+											class="block text-base leading-snug wrap-anywhere text-white min-[720px]:truncate min-[720px]:text-sm"
+											>{list.name}</strong
+										>
+									</label>
+									{#if list.description}
+										<p
+											class="mt-1.5 text-[13px] leading-relaxed wrap-anywhere text-(--muted) min-[720px]:mt-1 min-[720px]:truncate min-[720px]:text-[11px]"
+										>
+											{list.description}
+										</p>
+									{/if}
+								</div>
+							</div>
+
+							<div class="flex items-center justify-between gap-3 pl-11 min-[720px]:contents">
+								<span
+									class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs font-bold text-[#d7d0e2] min-[720px]:block"
+								>
+									<span
+										>{list.itemCount}<span class="ml-1 min-[720px]:hidden"
+											>{list.itemCount === 1 ? 'title' : 'titles'}</span
+										></span
+									>
+									{#if list.isShared}<span class="font-normal text-(--muted) min-[720px]:hidden"
+											>Shared</span
+										>{/if}
+								</span>
+
+								<span class="hidden text-xs text-(--muted) min-[720px]:block"
+									>{formatDate(list.updatedAt)}</span
+								>
+
+								<div class="flex shrink-0 justify-end gap-2 min-[720px]:gap-1">
+									<a
+										href={resolve('/profile/lists/[id]/edit', { id: list.id })}
+										aria-label={`Edit ${list.name}`}
+										title={`Edit ${list.name}`}
+										class="grid size-11 place-items-center rounded-xl border border-white/10 bg-white/4 text-(--muted) no-underline transition hover:border-(--purple)/50 hover:bg-(--purple)/10 hover:text-white min-[720px]:size-9"
 									>
 										<svg
 											viewBox="0 0 24 24"
@@ -337,10 +282,56 @@
 											stroke-linejoin="round"
 											aria-hidden="true"
 										>
-											<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"></path>
+											<path d="M12 20h9"></path>
+											<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
 										</svg>
-									</button>
-								{/if}
+									</a>
+									{#if list.isOwner}
+										<button
+											type="button"
+											onclick={() => (shareList = { id: list.id, name: list.name })}
+											aria-label={`Share ${list.name}`}
+											title={`Share ${list.name}`}
+											class="grid size-11 cursor-pointer place-items-center rounded-xl border border-white/10 bg-white/4 text-(--muted) transition hover:border-(--purple)/50 hover:bg-(--purple)/10 hover:text-white min-[720px]:size-9"
+										>
+											<svg
+												viewBox="0 0 24 24"
+												class="size-4"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												aria-hidden="true"
+											>
+												<circle cx="18" cy="5" r="3"></circle>
+												<circle cx="6" cy="12" r="3"></circle>
+												<circle cx="18" cy="19" r="3"></circle>
+												<path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"></path>
+											</svg>
+										</button>
+										<button
+											type="button"
+											onclick={() => confirmDelete({ id: list.id, name: list.name })}
+											aria-label={`Delete ${list.name}`}
+											title={`Delete ${list.name}`}
+											class="grid size-11 cursor-pointer place-items-center rounded-xl border border-white/10 bg-white/4 text-(--muted) transition hover:border-[#ff5c74]/50 hover:bg-[#ff5c74]/10 hover:text-[#ff8ca0] min-[720px]:size-9"
+										>
+											<svg
+												viewBox="0 0 24 24"
+												class="size-4"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												aria-hidden="true"
+											>
+												<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"></path>
+											</svg>
+										</button>
+									{/if}
+								</div>
 							</div>
 						</div>
 					{/each}
@@ -355,10 +346,10 @@
 		bind:this={deleteDialog}
 		oncancel={(event) => {
 			event.preventDefault();
-			cancelDelete();
+			if (!submitting) cancelDelete();
 		}}
 		onclick={(event) => {
-			if (event.target === deleteDialog) cancelDelete();
+			if (event.target === deleteDialog && !submitting) cancelDelete();
 		}}
 		class="m-auto box-border w-[min(92vw,460px)] rounded-[26px] border border-white/12 bg-[#14111a] p-0 text-(--ink) shadow-[0_30px_100px_rgba(0,0,0,.65)] backdrop:bg-black/75"
 	>
@@ -376,19 +367,21 @@
 				action="?/deleteList"
 				class="mt-6 flex justify-end gap-3"
 				data-loading-label="Deleting your list…"
-				data-close-dialog-on-success="true"
+				data-close-dialog-on-result="true"
 				data-remove-selection-on-success="true"
 				use:enhance={handleSubmit}
 			>
 				<input type="hidden" name="listId" value={deleteTarget?.id ?? ''} />
 				<button
 					type="button"
+					disabled={submitting}
 					onclick={cancelDelete}
 					class="cursor-pointer rounded-xl border border-white/10 bg-white/3 px-4 py-3 text-sm font-bold text-white"
 					>Cancel</button
 				>
 				<button
 					type="submit"
+					disabled={submitting}
 					class="cursor-pointer rounded-xl border border-[#ff5c74]/35 bg-[#ff5c74]/12 px-4 py-3 text-sm font-extrabold text-[#ff9aac]"
 					>Delete list</button
 				>

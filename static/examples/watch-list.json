@@ -1,0 +1,18 @@
+[
+	{
+		"title": "Arrival",
+		"type": "movie",
+		"genres": ["Drama", "Sci-Fi"],
+		"year": 2016,
+		"img": "",
+		"imdbRating": 0,
+		"ratingSource": "IMDb",
+		"plot": "A linguist helps communicate with mysterious visitors."
+	},
+	{
+		"title": "Dark",
+		"type": "series",
+		"genres": ["Crime", "Drama", "Mystery"],
+		"year": 2017
+	}
+]

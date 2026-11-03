@@ -29,7 +29,7 @@ self.addEventListener('activate', (event) => {
 	event.waitUntil(
 		(async () => {
 			for (const key of await caches.keys()) {
-				if (key !== cacheName) {
+				if (key.startsWith('realmate-') && key !== cacheName) {
 					await caches.delete(key);
 				}
 			}

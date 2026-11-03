@@ -19,7 +19,7 @@ Built with SvelteKit 3, Svelte 5, TypeScript, Tailwind CSS 4, Supabase Auth/Post
 2. After authentication, the visitor reaches `/profile`.
 3. **New list** opens a form where multiple movies or series can be added, while **Generate list** randomly samples matching TMDB results.
 4. The profile shows every saved list with a checkbox.
-5. Selecting one or more lists reveals **Start matching**.
+5. Selecting one or more lists enables **Start matching**.
 6. Realmate combines the selected lists, creates a Redis-backed room, and shows its copyable room code.
 7. Guests can open Realmate, choose **Join party**, and enter the code without creating an account. At least two connected people are required to start swiping.
 
@@ -88,6 +88,8 @@ The generator builds one TMDB discover branch per selected media type. Multiple 
 The app deliberately has no in-memory fallback. Both local development and production use Redis for rooms.
 
 ## Movie and series fields
+
+On **Create a list**, choose **Import JSON** to bulk-add titles to the draft. The file must contain an array of the objects shown below; use **Download example** for a ready-to-edit file. List name and description stay in the form. Imports append to existing draft titles, with a maximum of 500 titles in total and 5 MB per file. Valid entries stay collapsed, while entries needing correction open in the editor. Values that cannot be mapped to a field remain available under **Original entry** until reviewed. Importing does not save the list; choose **Create list** after correcting or removing invalid entries.
 
 Every list entry contains:
 

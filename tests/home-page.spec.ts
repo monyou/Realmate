@@ -10,18 +10,15 @@ const renderHome = (user: { email: string } | null) =>
 	}).body;
 
 describe('home page party joining', () => {
-	it('shows Join party after the guest authentication actions', () => {
-		const body = renderHome(null);
-
-		expect(body).toContain('Log in');
-		expect(body).toContain('Create account');
-		expect(body.indexOf('Join party')).toBeGreaterThan(body.indexOf('Create account'));
-	});
-
-	it('shows Join party after Open your lists for authenticated users', () => {
-		const body = renderHome({ email: 'viewer@example.com' });
-
-		expect(body).toContain('Open your lists');
-		expect(body.indexOf('Join party')).toBeGreaterThan(body.indexOf('Open your lists'));
+	it.each([
+		[null, '/register'],
+		[{ email: 'viewer@example.com' }, '/profile']
+	] as const)('routes the host action to %s and offers code entry', (user, destination) => {
+		const body = renderHome(user);
+		expect(body).toMatch(
+			new RegExp(`<a href="${destination}"[^>]*><span>Host a watch party</span>`)
+		);
+		expect(body).toContain('Join with a code');
+		expect(body.includes('href="/login"')).toBe(user === null);
 	});
 });

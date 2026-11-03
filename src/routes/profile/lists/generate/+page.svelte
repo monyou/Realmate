@@ -71,6 +71,11 @@
 	};
 
 	const handleSubmit: SubmitFunction = ({ cancel }) => {
+		if (submitting) {
+			cancel();
+			return;
+		}
+
 		touched = { year: true, genres: true, rating: true, limit: true };
 		if (!formIsValid) {
 			cancel();

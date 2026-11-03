@@ -1,12 +1,15 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { enhance, type SubmitFunction } from '$app/forms';
 	import { resolve } from '$app/paths';
+	import TitleSearch from '#lib/components/TitleSearch.svelte';
 	import GenreCombobox from '#lib/components/GenreCombobox.svelte';
 	import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
 	import RealmateLogo from '#lib/components/RealmateLogo.svelte';
+	import JsonTitleImport from '#lib/components/JsonTitleImport.svelte';
 	import { MEDIA_GENRES, validateGenreInput } from '#lib/media-genres.js';
 	import { MAX_MEDIA_PLOT_LENGTH } from '#lib/media-plot.js';
+	import { MAX_LIST_TITLES, type ImportedTitle } from '#lib/movie-list-import.js';
 
 	type DraftItem = {
 		key: string;
@@ -20,6 +23,8 @@
 		plot: string;
 		expanded: boolean;
 		showErrors: boolean;
+		importEntry?: number;
+		importReview?: { entry: number; issues: string[]; original: string };
 	};
 
 	type EditorActionData = {
@@ -34,6 +39,7 @@
 	} | null;
 
 	type Props = {
+		listId?: string;
 		mode: 'create' | 'edit';
 		form?: EditorActionData;
 		initialName?: string;
@@ -43,6 +49,7 @@
 	};
 
 	let {
+		listId,
 		mode,
 		form = null,
 		initialName = '',
@@ -51,6 +58,7 @@
 		expectedUpdatedAt = ''
 	}: Props = $props();
 	let itemSequence = 0;
+	let importing = $state(false);
 
 	const emptyItem = (expanded = true): DraftItem => ({
 		key: `item-${itemSequence++}`,
@@ -98,17 +106,26 @@
 				saved = [];
 			}
 		}
-		return Array.isArray(saved) && saved.length > 0 ? saved.map(toDraftItem) : [emptyItem()];
+		return Array.isArray(saved) && saved.length > 0 ? saved.map(toDraftItem) : [];
 	};
 	const restoreName = () => form?.values?.name ?? initialName;
 	const restoreDescription = () => form?.values?.description ?? initialDescription;
-	const submittedVersion = $derived(form?.values?.expectedUpdatedAt ?? expectedUpdatedAt);
-
-	let listName = $state(restoreName());
-	let description = $state(restoreDescription());
-	let items = $state<DraftItem[]>(restoreItems());
-	let showListErrors = $state(false);
-	let submitting = $state(false);
+	const draft = $derived.by(() => {
+		const id = listId;
+		// A refreshed load must not advance the version associated with unsaved fields.
+		return untrack(() => {
+			const snapshot = $state({
+				listId: id,
+				name: restoreName(),
+				description: restoreDescription(),
+				items: restoreItems(),
+				version: form?.values?.expectedUpdatedAt ?? expectedUpdatedAt,
+				showListErrors: false,
+				submitting: false
+			});
+			return snapshot;
+		});
+	});
 
 	const genreValidation = (item: DraftItem) => validateGenreInput(item.genres);
 	const hasValidGenres = (item: DraftItem) => genreValidation(item).valid;
@@ -125,6 +142,7 @@
 
 	const hasValidYear = (item: DraftItem) =>
 		Number.isInteger(item.year) && Number(item.year) >= 1888 && Number(item.year) <= 2100;
+	const hasValidTitle = (item: DraftItem) => Boolean(item.title.trim() && item.title.length <= 160);
 	const hasValidRating = (item: DraftItem) =>
 		item.imdbRating === undefined ||
 		(Number.isFinite(item.imdbRating) && item.imdbRating >= 0 && item.imdbRating <= 10);
@@ -138,9 +156,9 @@
 			return false;
 		}
 	};
-	const isComplete = (item: DraftItem) =>
+	const hasValidFields = (item: DraftItem) =>
 		Boolean(
-			item.title.trim() &&
+			hasValidTitle(item) &&
 			item.type &&
 			hasValidGenres(item) &&
 			hasValidYear(item) &&
@@ -148,20 +166,39 @@
 			hasValidRating(item) &&
 			hasValidPlot(item)
 		);
-	const hasValidListName = () => Boolean(listName.trim() && listName.length <= 80);
-	const hasValidDescription = () => description.length <= 500;
+	const isComplete = (item: DraftItem) => hasValidFields(item) && !item.importReview;
+	const importTitles = (titles: ImportedTitle[]) => {
+		const items = titles.map(({ value, entry, issues, original }) => {
+			const item = toDraftItem(value);
+			item.importEntry = entry;
+			// Keep invalid numeric ratings visible so they can be corrected rather than cleared.
+			if (typeof value.imdbRating === 'number') item.imdbRating = value.imdbRating;
+			if (issues.length) item.importReview = { entry, issues, original };
+			item.expanded = !isComplete(item);
+			item.showErrors = item.expanded;
+			return item;
+		});
+		draft.items.push(...items);
+	};
+	const readyTitleCount = $derived(draft.items.filter(isComplete).length);
+	const hasValidListName = () => Boolean(draft.name.trim() && draft.name.length <= 80);
+	const hasValidDescription = () => draft.description.length <= 500;
 	const hasValidListDetails = () => hasValidListName() && hasValidDescription();
 	const hasValidationErrors = $derived(
-		!hasValidListDetails() || items.length === 0 || items.some((item) => !isComplete(item))
+		!hasValidListDetails() ||
+			draft.items.length === 0 ||
+			draft.items.length > MAX_LIST_TITLES ||
+			draft.items.some((item) => !isComplete(item))
 	);
 	const hasVisibleValidationErrors = $derived(
-		(showListErrors && !hasValidListDetails()) ||
-			items.some((item) => item.showErrors && !isComplete(item))
+		(draft.showListErrors && !hasValidListDetails()) ||
+			draft.items.length > MAX_LIST_TITLES ||
+			draft.items.some((item) => item.showErrors && !isComplete(item))
 	);
 
 	const payload = $derived(
 		JSON.stringify(
-			items.map((item) => ({
+			draft.items.map((item) => ({
 				title: item.title.trim(),
 				type: item.type,
 				genres: normalizedGenres(item),
@@ -175,31 +212,42 @@
 	);
 
 	const removeItem = (key: string) => {
-		if (items.length > 1) items = items.filter((item) => item.key !== key);
+		draft.items = draft.items.filter((item) => item.key !== key);
 	};
 
 	const handleSubmit: SubmitFunction = ({ cancel }) => {
-		showListErrors = !hasValidListDetails();
-		for (const item of items) {
+		if (draft.submitting || importing || form?.conflict) {
+			cancel();
+			return;
+		}
+
+		draft.showListErrors = true;
+		for (const item of draft.items) {
 			if (!isComplete(item)) {
 				item.showErrors = true;
 				item.expanded = true;
 			}
 		}
 		if (!hasValidationErrors) {
-			submitting = true;
+			const submittedDraft = draft;
+			submittedDraft.submitting = true;
 			return async ({ update }) => {
 				try {
 					await update();
 				} finally {
-					submitting = false;
+					submittedDraft.submitting = false;
 				}
 			};
 		}
 
 		cancel();
 		void tick().then(() => {
-			document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+			const invalid = document.querySelector<HTMLElement>('[aria-invalid="true"]');
+			(
+				invalid ??
+				document.querySelector<HTMLElement>('[id^="import-review-"]') ??
+				document.getElementById('title-search')
+			)?.focus();
 		});
 	};
 </script>
@@ -245,8 +293,18 @@
 		<form method="POST" class="mt-9 space-y-6" novalidate use:enhance={handleSubmit}>
 			<input type="hidden" name="items" value={payload} />
 			{#if mode === 'edit'}
-				<input type="hidden" name="expectedUpdatedAt" value={submittedVersion} />
+				<input type="hidden" name="expectedUpdatedAt" value={draft.version} />
 			{/if}
+
+			{#if mode === 'create'}
+				<JsonTitleImport
+					titleCount={draft.items.length}
+					disabled={draft.submitting}
+					bind:reading={importing}
+					onimport={importTitles}
+				/>
+			{/if}
+
 			<section
 				class="grid gap-5 rounded-[26px] border border-white/9 bg-white/3 p-5 min-[700px]:grid-cols-2 min-[700px]:p-7"
 			>
@@ -256,21 +314,23 @@
 					><input
 						id="name"
 						name="name"
-						bind:value={listName}
+						bind:value={draft.name}
 						required
 						maxlength="80"
 						placeholder="Friday night favourites"
-						aria-invalid={showListErrors && !hasValidListName()}
-						aria-describedby={showListErrors && !hasValidListName() ? 'name-error' : undefined}
-						class="box-border w-full rounded-2xl border bg-black/20 px-4 py-3.5 text-sm text-white outline-none placeholder:text-[#68616f] focus:border-(--purple) {showListErrors &&
+						aria-invalid={draft.showListErrors && !hasValidListName()}
+						aria-describedby={draft.showListErrors && !hasValidListName()
+							? 'name-error'
+							: undefined}
+						class="box-border w-full rounded-2xl border bg-black/20 px-4 py-3.5 text-sm text-white outline-none placeholder:text-[#68616f] focus:border-(--purple) {draft.showListErrors &&
 						!hasValidListName()
 							? 'border-[#ff5c74]/60'
 							: 'border-white/12'}"
 					/>
-					{#if showListErrors && !hasValidListName()}<small
+					{#if draft.showListErrors && !hasValidListName()}<small
 							id="name-error"
 							class="mt-1.5 block text-[10px] text-[#ff8ca0]"
-							>{listName.trim()
+							>{draft.name.trim()
 								? 'List name cannot exceed 80 characters.'
 								: 'List name is required.'}</small
 						>{/if}
@@ -281,19 +341,19 @@
 					><input
 						id="description"
 						name="description"
-						bind:value={description}
+						bind:value={draft.description}
 						maxlength="500"
 						placeholder="Comedies everyone will enjoy"
-						aria-invalid={showListErrors && !hasValidDescription()}
-						aria-describedby={showListErrors && !hasValidDescription()
+						aria-invalid={draft.showListErrors && !hasValidDescription()}
+						aria-describedby={draft.showListErrors && !hasValidDescription()
 							? 'description-error'
 							: undefined}
-						class="box-border w-full rounded-2xl border bg-black/20 px-4 py-3.5 text-sm text-white outline-none placeholder:text-[#68616f] focus:border-(--purple) {showListErrors &&
+						class="box-border w-full rounded-2xl border bg-black/20 px-4 py-3.5 text-sm text-white outline-none placeholder:text-[#68616f] focus:border-(--purple) {draft.showListErrors &&
 						!hasValidDescription()
 							? 'border-[#ff5c74]/60'
 							: 'border-white/12'}"
 					/>
-					{#if showListErrors && !hasValidDescription()}<small
+					{#if draft.showListErrors && !hasValidDescription()}<small
 							id="description-error"
 							class="mt-1.5 block text-[10px] text-[#ff8ca0]"
 							>Description cannot exceed 500 characters.</small
@@ -301,8 +361,45 @@
 				</div>
 			</section>
 
+			<TitleSearch
+				onadd={(result) => {
+					const item = toDraftItem(result);
+					item.expanded = !isComplete(item);
+					item.showErrors = item.expanded;
+					draft.items.push(item);
+				}}
+				onmanual={async (title) => {
+					const item = emptyItem();
+					item.title = title;
+					draft.items.push(item);
+					await tick();
+					document.getElementById(`title-${item.key}`)?.focus();
+				}}
+			/>
+			{#if draft.showListErrors && !draft.items.length}<p
+					role="alert"
+					class="text-sm text-[#ff9aac]"
+				>
+					Add at least one movie or series.
+				</p>{/if}
+			{#if draft.items.length > MAX_LIST_TITLES}
+				<p role="alert" class="text-sm text-[#ff9aac]">
+					A list can contain up to {MAX_LIST_TITLES} titles. Remove {draft.items.length -
+						MAX_LIST_TITLES} before saving.
+				</p>
+			{/if}
+			{#if mode === 'create' && draft.items.length}
+				<p role="status" class="text-sm text-(--muted)">
+					{readyTitleCount}
+					{readyTitleCount === 1 ? 'title' : 'titles'} ready{#if readyTitleCount < draft.items.length}<span
+							class="text-[#ff9aac]"
+						>
+							· {draft.items.length - readyTitleCount} need attention</span
+						>{/if}
+				</p>
+			{/if}
 			<div class="space-y-5">
-				{#each items as item, index (item.key)}
+				{#each draft.items as item, index (item.key)}
 					<details
 						bind:open={item.expanded}
 						class="group relative overflow-visible rounded-[26px] border border-white/9 bg-[linear-gradient(145deg,rgba(29,25,39,.92),rgba(15,13,20,.97))] shadow-[0_18px_55px_rgba(0,0,0,.22)] open:z-20"
@@ -314,13 +411,16 @@
 								<span class="text-[10px] font-extrabold tracking-[0.16em] text-(--rose) uppercase"
 									>Title {index + 1}</span
 								>
-								<h2 class="mt-1 truncate text-lg font-extrabold tracking-[-0.03em]">
+								<h2 class="mt-1 text-lg font-extrabold tracking-[-0.03em] wrap-anywhere">
 									{item.title || 'Untitled'}
 								</h2>
+								{#if item.importEntry}<p class="mt-1 text-xs text-(--muted)">
+										Imported entry {item.importEntry}
+									</p>{/if}
 							</div>
 							<div class="flex flex-none items-center gap-2.5">
 								{#if item.showErrors && !isComplete(item)}<span
-										class="hidden rounded-full border border-[#ff5c74]/30 bg-[#ff5c74]/10 px-2.5 py-1 text-[9px] font-extrabold tracking-[0.08em] text-[#ff8ca0] uppercase min-[520px]:inline-flex"
+										class="inline-flex rounded-full border border-[#ff5c74]/30 bg-[#ff5c74]/10 px-2.5 py-1 text-[9px] font-extrabold tracking-[0.08em] text-[#ff8ca0] uppercase"
 										>Needs attention</span
 									>{:else if item.type}<span
 										class="hidden rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[9px] font-extrabold tracking-[0.08em] text-(--muted) uppercase min-[520px]:inline-flex"
@@ -339,14 +439,46 @@
 							</div>
 						</summary>
 						<div class="border-t border-white/7 p-5 min-[700px]:p-7">
-							{#if items.length > 1}<div class="mb-5 flex justify-end">
+							{#if item.importReview}
+								<div
+									id={`import-review-${item.key}`}
+									class="mb-5 rounded-xl border border-(--gold)/25 bg-(--gold)/5 p-4 text-sm leading-relaxed wrap-anywhere text-(--gold)"
+									tabindex="-1"
+								>
+									<h3 class="font-bold">Review imported entry {item.importReview.entry}</h3>
+									<ul class="mt-2 list-disc space-y-1 pl-5">
+										{#each item.importReview.issues as issue (issue)}<li>{issue}</li>{/each}
+									</ul>
+									<details class="mt-3 text-xs text-(--muted)">
+										<summary class="cursor-pointer py-2 font-bold">Original entry</summary>
+										<pre
+											class="max-h-60 overflow-auto rounded-lg bg-black/25 p-3 wrap-anywhere whitespace-pre-wrap"><code
+												>{item.importReview.original}</code
+											></pre>
+									</details>
+									<p class="mt-2 text-xs text-(--muted)">
+										Correct the fields below, then use the edited values. Unsupported fields will be
+										discarded.
+									</p>
 									<button
 										type="button"
-										onclick={() => removeItem(item.key)}
-										class="cursor-pointer rounded-xl border border-white/9 bg-white/4 px-3 py-2 text-xs font-bold text-(--muted) hover:text-white"
-										>Remove title</button
+										disabled={!hasValidFields(item)}
+										onclick={() => {
+											item.importReview = undefined;
+										}}
+										class="mt-3 min-h-11 cursor-pointer rounded-xl border border-(--gold)/30 px-3 py-2 text-xs font-bold text-(--gold) hover:bg-(--gold)/10 disabled:cursor-not-allowed disabled:opacity-50"
+										>Use edited values</button
 									>
-								</div>{/if}
+								</div>
+							{/if}
+							<div class="mb-5 flex justify-end">
+								<button
+									type="button"
+									onclick={() => removeItem(item.key)}
+									class="cursor-pointer rounded-xl border border-white/9 bg-white/4 px-3 py-2 text-xs font-bold text-(--muted) hover:text-white"
+									>Remove title</button
+								>
+							</div>
 							<div class="grid gap-5 min-[700px]:grid-cols-2">
 								<div>
 									<label for={`title-${item.key}`} class="mb-2 block text-xs font-bold"
@@ -357,18 +489,21 @@
 										required
 										maxlength="160"
 										placeholder="Dune: Part Two"
-										aria-invalid={item.showErrors && !item.title.trim()}
-										aria-describedby={item.showErrors && !item.title.trim()
+										aria-invalid={item.showErrors && !hasValidTitle(item)}
+										aria-describedby={item.showErrors && !hasValidTitle(item)
 											? `title-error-${item.key}`
 											: undefined}
 										class="box-border w-full rounded-xl border bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-[#68616f] focus:border-(--purple) {item.showErrors &&
-										!item.title.trim()
+										!hasValidTitle(item)
 											? 'border-[#ff5c74]/60'
 											: 'border-white/12'}"
 									/>
-									{#if item.showErrors && !item.title.trim()}<small
+									{#if item.showErrors && !hasValidTitle(item)}<small
 											id={`title-error-${item.key}`}
-											class="mt-1.5 block text-[10px] text-[#ff8ca0]">Title is required.</small
+											class="mt-1.5 block text-[10px] text-[#ff8ca0]"
+											>{item.title.trim()
+												? 'Title cannot exceed 160 characters.'
+												: 'Title is required.'}</small
 										>{/if}
 								</div>
 								<div>
@@ -542,12 +677,6 @@
 					</details>
 				{/each}
 			</div>
-			<button
-				type="button"
-				onclick={() => (items = [...items, emptyItem()])}
-				class="w-full cursor-pointer rounded-2xl border border-dashed border-white/16 bg-white/3 px-5 py-4 text-sm font-extrabold text-white transition hover:border-(--purple) hover:bg-(--purple)/7"
-				>+ Add another movie or series</button
-			>
 			{#if hasVisibleValidationErrors}<p
 					class="rounded-2xl border border-[#ff5c74]/25 bg-[#ff5c74]/8 px-4 py-3 text-sm text-[#ff9aac]"
 					role="alert"
@@ -567,7 +696,7 @@
 					>Cancel</a
 				><button
 					type="submit"
-					disabled={Boolean(form?.conflict)}
+					disabled={draft.submitting || importing || Boolean(form?.conflict)}
 					class="cursor-pointer rounded-2xl border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-6 py-3.5 text-sm font-extrabold text-[#160b10] shadow-[0_12px_30px_rgba(255,63,102,.22)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
 				>
 					{form?.conflict ? 'Refresh required' : mode === 'create' ? 'Create list' : 'Save changes'} →
@@ -578,6 +707,6 @@
 </div>
 
 <LoadingOverlay
-	visible={submitting}
+	visible={draft.submitting}
 	label={mode === 'create' ? 'Creating your list…' : 'Saving your changes…'}
 />

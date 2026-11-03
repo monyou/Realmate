@@ -44,12 +44,13 @@ describe('profile list table', () => {
 		expect(body).toContain('aria-label="Share Weekend picks"');
 		expect(body).toContain('aria-label="Delete Weekend picks"');
 		expect(body).toContain('aria-label="Shared by a friend is shared"');
-		expect(body).toContain('aria-label="Show full name and description for Weekend picks"');
-		expect(body).toContain('aria-expanded="false"');
+		expect(body).toContain('for="select-list-09d4779e-236d-44f8-af8b-a6cc35e769f4"');
+		expect(body).toContain('For Saturday');
+		expect(body).not.toContain('role="tooltip"');
 		expect(body).toContain('aria-label="Edit Shared by a friend"');
 		expect(body).not.toContain('aria-label="Share Shared by a friend"');
 		expect(body).not.toContain('aria-label="Delete Shared by a friend"');
-		expect(body).toContain('data-close-dialog-on-success="true"');
+		expect(body).toContain('data-close-dialog-on-result="true"');
 		expect(body).toContain('data-remove-selection-on-success="true"');
 	});
 

@@ -32,11 +32,12 @@
 	const choose = (genre: MediaGenre) => {
 		value = applyGenreSuggestion(value, genre);
 		activeIndex = 0;
-		open = false;
 		input.focus();
+		open = false;
 	};
 
 	const handleKeydown = (event: KeyboardEvent) => {
+		if (event.isComposing) return;
 		if (event.key === 'Escape') {
 			open = false;
 			return;
@@ -61,14 +62,24 @@
 			}
 			return;
 		}
-		if (event.key === 'Enter' && open && suggestions[activeIndex]) {
+		if (event.key === 'Enter' && popupVisible && suggestions[activeIndex]) {
 			event.preventDefault();
 			choose(suggestions[activeIndex]);
 		}
 	};
 </script>
 
-<div class="relative">
+<div
+	class="relative"
+	onfocusout={(event) => {
+		if (
+			!(event.relatedTarget instanceof Node) ||
+			!event.currentTarget.contains(event.relatedTarget)
+		) {
+			open = false;
+		}
+	}}
+>
 	<input
 		bind:this={input}
 		{id}
@@ -81,7 +92,7 @@
 		aria-autocomplete="list"
 		aria-expanded={popupVisible}
 		aria-controls={listboxId}
-		aria-activedescendant={open && suggestions[activeIndex]
+		aria-activedescendant={popupVisible && suggestions[activeIndex]
 			? `${listboxId}-${activeIndex}`
 			: undefined}
 		aria-invalid={invalid}
@@ -89,7 +100,6 @@
 		onfocus={showSuggestions}
 		oninput={showSuggestions}
 		onkeydown={handleKeydown}
-		onblur={() => setTimeout(() => (open = false), 120)}
 		class="box-border w-full rounded-xl border bg-black/20 px-4 py-3 pr-10 text-sm text-white outline-none placeholder:text-[#68616f] focus:border-(--purple) {invalid
 			? 'border-[#ff5c74]/60'
 			: 'border-white/12'}"

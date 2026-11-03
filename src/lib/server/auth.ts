@@ -3,13 +3,7 @@ import type { RequestEvent } from '@sveltejs/kit';
 
 type Locals = RequestEvent['locals'];
 
-export const getCurrentUser = async (locals: Locals) => {
-	if (!locals.supabase) return null;
-	const { data, error: authError } = await locals.supabase.auth.getUser();
-	if (authError) return null;
-	locals.user = data.user;
-	return data.user;
-};
+export const getCurrentUser = (locals: Locals) => locals.getUser();
 
 export const requireSupabase = (locals: Locals) => {
 	if (!locals.supabase) {
@@ -19,9 +13,8 @@ export const requireSupabase = (locals: Locals) => {
 };
 
 export const requireUser = async (locals: Locals) => {
-	const supabase = requireSupabase(locals);
-	const { data, error: authError } = await supabase.auth.getUser();
-	if (authError || !data.user) redirect(303, '/login');
-	locals.user = data.user;
-	return data.user;
+	requireSupabase(locals);
+	const user = await getCurrentUser(locals);
+	if (!user) redirect(303, '/login');
+	return user;
 };

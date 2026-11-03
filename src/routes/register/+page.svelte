@@ -28,6 +28,11 @@
 	);
 
 	const handleSubmit: SubmitFunction = ({ cancel }) => {
+		if (submitting) {
+			cancel();
+			return;
+		}
+
 		validationAttempted = true;
 		if (
 			!emailValidationMessage(email) &&
@@ -181,7 +186,8 @@
 						</p>{/if}
 					<button
 						type="submit"
-						class="mt-2 flex w-full cursor-pointer items-center justify-between rounded-2xl border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-4 font-extrabold text-[#160b10] shadow-[0_14px_34px_rgba(255,63,102,.24)] transition hover:-translate-y-0.5"
+						disabled={submitting}
+						class="mt-2 flex w-full cursor-pointer items-center justify-between rounded-2xl border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-5 py-4 font-extrabold text-[#160b10] shadow-[0_14px_34px_rgba(255,63,102,.24)] transition hover:not-disabled:-translate-y-0.5 disabled:cursor-wait disabled:opacity-60"
 					>
 						<span>Create my account</span>
 						<span aria-hidden="true">→</span>

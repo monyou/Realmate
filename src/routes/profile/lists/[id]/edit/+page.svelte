@@ -6,6 +6,7 @@
 </script>
 
 <MovieListEditor
+	listId={data.list.id}
 	mode="edit"
 	{form}
 	initialName={data.list.name}

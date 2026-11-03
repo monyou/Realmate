@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const auth = vi.hoisted(() => ({
-	requireUser: vi.fn(),
+	getCurrentUser: vi.fn(),
 	requireSupabase: vi.fn()
 }));
 
@@ -16,7 +16,7 @@ describe('list sharing API', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
-		auth.requireUser.mockResolvedValue({ id: 'owner-id', email: 'owner@example.com' });
+		auth.getCurrentUser.mockResolvedValue({ id: 'owner-id', email: 'owner@example.com' });
 		auth.requireSupabase.mockReturnValue({ rpc });
 	});
 
