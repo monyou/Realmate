@@ -1,8 +1,11 @@
 import type { RequestHandler } from './$types';
 import { emailValidationMessage } from '#lib/auth-validation.js';
-import { requireSupabase, requireUser } from '#lib/server/auth.js';
+import { getCurrentUser, requireSupabase } from '#lib/server/auth.js';
 
 const isUuid = (value: string) => /^[0-9a-f-]{36}$/i.test(value);
+
+const loginRequired = () =>
+	Response.json({ message: 'Your session expired. Log in again to continue.' }, { status: 401 });
 
 const sharingError = (message: string, code?: string) => {
 	if (message.startsWith('No account found for:'))
@@ -20,12 +23,13 @@ const sharingError = (message: string, code?: string) => {
 };
 
 export const GET: RequestHandler = async ({ locals, params, setHeaders }) => {
-	await requireUser(locals);
 	setHeaders({ 'cache-control': 'private, no-store' });
+	const supabase = requireSupabase(locals);
+	if (!(await getCurrentUser(locals))) return loginRequired();
 	if (!isUuid(params.id))
 		return Response.json({ message: 'The selected list is invalid.' }, { status: 400 });
 
-	const { data, error } = await requireSupabase(locals).rpc('get_movie_list_share_emails', {
+	const { data, error } = await supabase.rpc('get_movie_list_share_emails', {
 		target_list_id: params.id
 	});
 	if (error) {
@@ -37,8 +41,10 @@ export const GET: RequestHandler = async ({ locals, params, setHeaders }) => {
 };
 
 export const PUT: RequestHandler = async ({ request, locals, params, setHeaders }) => {
-	const user = await requireUser(locals);
 	setHeaders({ 'cache-control': 'private, no-store' });
+	const supabase = requireSupabase(locals);
+	const user = await getCurrentUser(locals);
+	if (!user) return loginRequired();
 	if (!isUuid(params.id))
 		return Response.json({ message: 'The selected list is invalid.' }, { status: 400 });
 
@@ -69,7 +75,7 @@ export const PUT: RequestHandler = async ({ request, locals, params, setHeaders 
 		return Response.json({ message: 'You cannot share a list with its owner.' }, { status: 400 });
 	}
 
-	const { data, error } = await requireSupabase(locals).rpc('sync_movie_list_shares', {
+	const { data, error } = await supabase.rpc('sync_movie_list_shares', {
 		target_list_id: params.id,
 		recipient_emails: normalizedEmails
 	});

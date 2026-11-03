@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { refreshAll } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { ListSharingEditor } from '#lib/list-sharing.svelte.js';
 
 	type SharedList = { id: string; name: string };
@@ -29,8 +30,8 @@
 		const id = list?.id;
 		if (!id) return;
 		await editor.save(id, async () => {
-			await refreshAll();
 			if (list?.id === id) onClose();
+			await refreshAll();
 		});
 	}
 </script>
@@ -156,12 +157,33 @@
 			>
 		{/if}
 
+		{#if editor.draftRestored}
+			<p class="mt-4 text-xs text-(--muted)" role="status">
+				Your unsaved emails have been restored. Review them and send.
+			</p>
+		{/if}
+
 		{#if editor.message}
 			<p
 				class="mt-4 rounded-xl border border-[#ff5c74]/25 bg-[#ff5c74]/8 px-4 py-3 text-xs text-[#ff9aac]"
 				role="alert"
 			>
 				{editor.message}
+			</p>
+		{/if}
+
+		{#if editor.requiresLogin}
+			<a
+				href={resolve('login')}
+				onclick={(event) => {
+					if (!editor.prepareLogin()) event.preventDefault();
+				}}
+				class="mt-3 inline-block text-sm font-bold text-white underline underline-offset-4"
+			>
+				{editor.draftNotSaved ? 'Log in without keeping edits' : 'Log in again'}
+			</a>
+			<p class="mt-2 text-xs text-(--muted)">
+				After logging in, reopen this list’s sharing settings to continue.
 			</p>
 		{/if}
 
