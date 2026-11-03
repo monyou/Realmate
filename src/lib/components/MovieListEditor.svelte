@@ -6,8 +6,10 @@
 	import GenreCombobox from '#lib/components/GenreCombobox.svelte';
 	import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
 	import RealmateLogo from '#lib/components/RealmateLogo.svelte';
+	import JsonTitleImport from '#lib/components/JsonTitleImport.svelte';
 	import { MEDIA_GENRES, validateGenreInput } from '#lib/media-genres.js';
 	import { MAX_MEDIA_PLOT_LENGTH } from '#lib/media-plot.js';
+	import { MAX_LIST_TITLES, type ImportedTitle } from '#lib/movie-list-import.js';
 
 	type DraftItem = {
 		key: string;
@@ -21,6 +23,8 @@
 		plot: string;
 		expanded: boolean;
 		showErrors: boolean;
+		importEntry?: number;
+		importReview?: { entry: number; issues: string[]; original: string };
 	};
 
 	type EditorActionData = {
@@ -54,6 +58,7 @@
 		expectedUpdatedAt = ''
 	}: Props = $props();
 	let itemSequence = 0;
+	let importing = $state(false);
 
 	const emptyItem = (expanded = true): DraftItem => ({
 		key: `item-${itemSequence++}`,
@@ -137,6 +142,7 @@
 
 	const hasValidYear = (item: DraftItem) =>
 		Number.isInteger(item.year) && Number(item.year) >= 1888 && Number(item.year) <= 2100;
+	const hasValidTitle = (item: DraftItem) => Boolean(item.title.trim() && item.title.length <= 160);
 	const hasValidRating = (item: DraftItem) =>
 		item.imdbRating === undefined ||
 		(Number.isFinite(item.imdbRating) && item.imdbRating >= 0 && item.imdbRating <= 10);
@@ -150,9 +156,9 @@
 			return false;
 		}
 	};
-	const isComplete = (item: DraftItem) =>
+	const hasValidFields = (item: DraftItem) =>
 		Boolean(
-			item.title.trim() &&
+			hasValidTitle(item) &&
 			item.type &&
 			hasValidGenres(item) &&
 			hasValidYear(item) &&
@@ -160,16 +166,33 @@
 			hasValidRating(item) &&
 			hasValidPlot(item)
 		);
+	const isComplete = (item: DraftItem) => hasValidFields(item) && !item.importReview;
+	const importTitles = (titles: ImportedTitle[]) => {
+		const items = titles.map(({ value, entry, issues, original }) => {
+			const item = toDraftItem(value);
+			item.importEntry = entry;
+			// Keep invalid numeric ratings visible so they can be corrected rather than cleared.
+			if (typeof value.imdbRating === 'number') item.imdbRating = value.imdbRating;
+			if (issues.length) item.importReview = { entry, issues, original };
+			item.expanded = !isComplete(item);
+			item.showErrors = item.expanded;
+			return item;
+		});
+		draft.items.push(...items);
+	};
+	const readyTitleCount = $derived(draft.items.filter(isComplete).length);
 	const hasValidListName = () => Boolean(draft.name.trim() && draft.name.length <= 80);
 	const hasValidDescription = () => draft.description.length <= 500;
 	const hasValidListDetails = () => hasValidListName() && hasValidDescription();
 	const hasValidationErrors = $derived(
 		!hasValidListDetails() ||
 			draft.items.length === 0 ||
+			draft.items.length > MAX_LIST_TITLES ||
 			draft.items.some((item) => !isComplete(item))
 	);
 	const hasVisibleValidationErrors = $derived(
 		(draft.showListErrors && !hasValidListDetails()) ||
+			draft.items.length > MAX_LIST_TITLES ||
 			draft.items.some((item) => item.showErrors && !isComplete(item))
 	);
 
@@ -193,7 +216,7 @@
 	};
 
 	const handleSubmit: SubmitFunction = ({ cancel }) => {
-		if (draft.submitting || form?.conflict) {
+		if (draft.submitting || importing || form?.conflict) {
 			cancel();
 			return;
 		}
@@ -220,7 +243,11 @@
 		cancel();
 		void tick().then(() => {
 			const invalid = document.querySelector<HTMLElement>('[aria-invalid="true"]');
-			(invalid ?? document.getElementById('title-search'))?.focus();
+			(
+				invalid ??
+				document.querySelector<HTMLElement>('[id^="import-review-"]') ??
+				document.getElementById('title-search')
+			)?.focus();
 		});
 	};
 </script>
@@ -268,6 +295,16 @@
 			{#if mode === 'edit'}
 				<input type="hidden" name="expectedUpdatedAt" value={draft.version} />
 			{/if}
+
+			{#if mode === 'create'}
+				<JsonTitleImport
+					titleCount={draft.items.length}
+					disabled={draft.submitting}
+					bind:reading={importing}
+					onimport={importTitles}
+				/>
+			{/if}
+
 			<section
 				class="grid gap-5 rounded-[26px] border border-white/9 bg-white/3 p-5 min-[700px]:grid-cols-2 min-[700px]:p-7"
 			>
@@ -345,6 +382,22 @@
 				>
 					Add at least one movie or series.
 				</p>{/if}
+			{#if draft.items.length > MAX_LIST_TITLES}
+				<p role="alert" class="text-sm text-[#ff9aac]">
+					A list can contain up to {MAX_LIST_TITLES} titles. Remove {draft.items.length -
+						MAX_LIST_TITLES} before saving.
+				</p>
+			{/if}
+			{#if mode === 'create' && draft.items.length}
+				<p role="status" class="text-sm text-(--muted)">
+					{readyTitleCount}
+					{readyTitleCount === 1 ? 'title' : 'titles'} ready{#if readyTitleCount < draft.items.length}<span
+							class="text-[#ff9aac]"
+						>
+							· {draft.items.length - readyTitleCount} need attention</span
+						>{/if}
+				</p>
+			{/if}
 			<div class="space-y-5">
 				{#each draft.items as item, index (item.key)}
 					<details
@@ -358,13 +411,16 @@
 								<span class="text-[10px] font-extrabold tracking-[0.16em] text-(--rose) uppercase"
 									>Title {index + 1}</span
 								>
-								<h2 class="mt-1 truncate text-lg font-extrabold tracking-[-0.03em]">
+								<h2 class="mt-1 text-lg font-extrabold tracking-[-0.03em] wrap-anywhere">
 									{item.title || 'Untitled'}
 								</h2>
+								{#if item.importEntry}<p class="mt-1 text-xs text-(--muted)">
+										Imported entry {item.importEntry}
+									</p>{/if}
 							</div>
 							<div class="flex flex-none items-center gap-2.5">
 								{#if item.showErrors && !isComplete(item)}<span
-										class="hidden rounded-full border border-[#ff5c74]/30 bg-[#ff5c74]/10 px-2.5 py-1 text-[9px] font-extrabold tracking-[0.08em] text-[#ff8ca0] uppercase min-[520px]:inline-flex"
+										class="inline-flex rounded-full border border-[#ff5c74]/30 bg-[#ff5c74]/10 px-2.5 py-1 text-[9px] font-extrabold tracking-[0.08em] text-[#ff8ca0] uppercase"
 										>Needs attention</span
 									>{:else if item.type}<span
 										class="hidden rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[9px] font-extrabold tracking-[0.08em] text-(--muted) uppercase min-[520px]:inline-flex"
@@ -383,6 +439,38 @@
 							</div>
 						</summary>
 						<div class="border-t border-white/7 p-5 min-[700px]:p-7">
+							{#if item.importReview}
+								<div
+									id={`import-review-${item.key}`}
+									class="mb-5 rounded-xl border border-(--gold)/25 bg-(--gold)/5 p-4 text-sm leading-relaxed wrap-anywhere text-(--gold)"
+									tabindex="-1"
+								>
+									<h3 class="font-bold">Review imported entry {item.importReview.entry}</h3>
+									<ul class="mt-2 list-disc space-y-1 pl-5">
+										{#each item.importReview.issues as issue (issue)}<li>{issue}</li>{/each}
+									</ul>
+									<details class="mt-3 text-xs text-(--muted)">
+										<summary class="cursor-pointer py-2 font-bold">Original entry</summary>
+										<pre
+											class="max-h-60 overflow-auto rounded-lg bg-black/25 p-3 wrap-anywhere whitespace-pre-wrap"><code
+												>{item.importReview.original}</code
+											></pre>
+									</details>
+									<p class="mt-2 text-xs text-(--muted)">
+										Correct the fields below, then use the edited values. Unsupported fields will be
+										discarded.
+									</p>
+									<button
+										type="button"
+										disabled={!hasValidFields(item)}
+										onclick={() => {
+											item.importReview = undefined;
+										}}
+										class="mt-3 min-h-11 cursor-pointer rounded-xl border border-(--gold)/30 px-3 py-2 text-xs font-bold text-(--gold) hover:bg-(--gold)/10 disabled:cursor-not-allowed disabled:opacity-50"
+										>Use edited values</button
+									>
+								</div>
+							{/if}
 							<div class="mb-5 flex justify-end">
 								<button
 									type="button"
@@ -401,18 +489,21 @@
 										required
 										maxlength="160"
 										placeholder="Dune: Part Two"
-										aria-invalid={item.showErrors && !item.title.trim()}
-										aria-describedby={item.showErrors && !item.title.trim()
+										aria-invalid={item.showErrors && !hasValidTitle(item)}
+										aria-describedby={item.showErrors && !hasValidTitle(item)
 											? `title-error-${item.key}`
 											: undefined}
 										class="box-border w-full rounded-xl border bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-[#68616f] focus:border-(--purple) {item.showErrors &&
-										!item.title.trim()
+										!hasValidTitle(item)
 											? 'border-[#ff5c74]/60'
 											: 'border-white/12'}"
 									/>
-									{#if item.showErrors && !item.title.trim()}<small
+									{#if item.showErrors && !hasValidTitle(item)}<small
 											id={`title-error-${item.key}`}
-											class="mt-1.5 block text-[10px] text-[#ff8ca0]">Title is required.</small
+											class="mt-1.5 block text-[10px] text-[#ff8ca0]"
+											>{item.title.trim()
+												? 'Title cannot exceed 160 characters.'
+												: 'Title is required.'}</small
 										>{/if}
 								</div>
 								<div>
@@ -605,7 +696,7 @@
 					>Cancel</a
 				><button
 					type="submit"
-					disabled={draft.submitting || Boolean(form?.conflict)}
+					disabled={draft.submitting || importing || Boolean(form?.conflict)}
 					class="cursor-pointer rounded-2xl border-0 bg-[linear-gradient(110deg,#ff5c74,#ff7b66)] px-6 py-3.5 text-sm font-extrabold text-[#160b10] shadow-[0_12px_30px_rgba(255,63,102,.22)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
 				>
 					{form?.conflict ? 'Refresh required' : mode === 'create' ? 'Create list' : 'Save changes'} →

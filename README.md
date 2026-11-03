@@ -89,6 +89,8 @@ The app deliberately has no in-memory fallback. Both local development and produ
 
 ## Movie and series fields
 
+On **Create a list**, choose **Import JSON** to bulk-add titles to the draft. The file must contain an array of the objects shown below; use **Download example** for a ready-to-edit file. List name and description stay in the form. Imports append to existing draft titles, with a maximum of 500 titles in total and 5 MB per file. Valid entries stay collapsed, while entries needing correction open in the editor. Values that cannot be mapped to a field remain available under **Original entry** until reviewed. Importing does not save the list; choose **Create list** after correcting or removing invalid entries.
+
 Every list entry contains:
 
 ```json
